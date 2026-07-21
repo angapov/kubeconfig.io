@@ -36,6 +36,12 @@ type PortField = {
   protocol: Protocol;
 };
 
+type LabelField = {
+  id: number;
+  key: string;
+  value: string;
+};
+
 type ContainerField = {
   id: number;
   name: string;
@@ -69,7 +75,7 @@ type ResourceState = {
   kind: ResourceKind;
   name: string;
   namespace: string;
-  labels: string;
+  labels: LabelField[];
   replicas: string;
   completions: string;
   parallelism: string;
@@ -113,8 +119,16 @@ interface YamlObject {
   [key: string]: YamlValue | undefined;
 }
 
-const KUBERNETES_VERSION_OPTIONS = ["1.35", "1.34", "1.33"];
-const OPENSHIFT_VERSION_OPTIONS = ["4.21", "4.20", "4.19", "4.18", "4.17"];
+const KUBERNETES_VERSION_OPTIONS = ["1.36", "1.35", "1.34", "1.33", "1.32"];
+const OPENSHIFT_VERSION_OPTIONS = ["4.22", "4.21", "4.20", "4.19", "4.18"];
+
+function kindUsesLabels(kind: ResourceKind) {
+  return kind === "Pod" || kind === "Deployment" || kind === "Service";
+}
+
+function createDefaultLabel(id = Date.now()): LabelField {
+  return { id, key: "app", value: "example" };
+}
 
 function createDefaultPort(index: number, id = Date.now()): PortField {
   if (index === 0) {
@@ -199,21 +213,12 @@ function toYaml(object: YamlObject, indent = 0): string[] {
   return lines;
 }
 
-function parseLabels(value: string, fallbackName: string) {
-  const labels = Object.fromEntries(
+function parseLabels(value: LabelField[]) {
+  return Object.fromEntries(
     value
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-      .map((entry) => {
-        const separator = entry.includes("=") ? "=" : ":";
-        const [key, ...rest] = entry.split(separator);
-        return [key.trim(), rest.join(separator).trim() || "true"];
-      })
+      .map((label) => [label.key.trim(), label.value.trim()])
       .filter(([key]) => Boolean(key)),
   );
-
-  return Object.keys(labels).length > 0 ? labels : { app: fallbackName || "app" };
 }
 
 function createDefaultResource(id: number): ResourceState {
@@ -222,7 +227,7 @@ function createDefaultResource(id: number): ResourceState {
     kind: "Deployment",
     name: "example",
     namespace: "production",
-    labels: "app=example",
+    labels: [createDefaultLabel(1)],
     replicas: "1",
     completions: "1",
     parallelism: "1",
@@ -327,11 +332,12 @@ function buildResourceManifest(resourceState: ResourceState) {
     pvSourceType,
     volumes,
   } = resourceState;
-  const parsedLabels = parseLabels(labels, name);
+  const parsedLabels = parseLabels(labels);
+  const resourceLabels = kindUsesLabels(kind) ? parsedLabels : undefined;
   const metadata: YamlObject = {
     name: name || "untitled",
     namespace: kind === "PersistentVolume" ? undefined : namespace || "default",
-    labels: parsedLabels,
+    labels: resourceLabels,
   };
 
   const volumeSpecs = volumes.map((volume) => {
@@ -509,7 +515,6 @@ function buildResourceManifest(resourceState: ResourceState) {
       parallelism: Number(parallelism),
       backoffLimit: Number(backoffLimit),
       template: {
-        metadata: { labels: parsedLabels },
         spec: podSpec,
       },
     };
@@ -630,8 +635,8 @@ function SelectField({
 
 export default function Home() {
   const [platform, setPlatform] = useState<Platform>("Kubernetes");
-  const [kubernetesVersion, setKubernetesVersion] = useState("1.35");
-  const [openShiftVersion, setOpenShiftVersion] = useState("4.21");
+  const [kubernetesVersion, setKubernetesVersion] = useState("1.36");
+  const [openShiftVersion, setOpenShiftVersion] = useState("4.22");
   const [resources, setResources] = useState<ResourceState[]>(() => [createDefaultResource(1)]);
   const [activeResourceId, setActiveResourceId] = useState(1);
   const nextResourceId = useRef(2);
@@ -700,7 +705,7 @@ export default function Home() {
 
   const setName = (value: SetStateAction<string>) => setResourceField("name", value);
   const setNamespace = (value: SetStateAction<string>) => setResourceField("namespace", value);
-  const setLabels = (value: SetStateAction<string>) => setResourceField("labels", value);
+  const setLabels = (value: SetStateAction<LabelField[]>) => setResourceField("labels", value);
   const setReplicas = (value: SetStateAction<string>) => setResourceField("replicas", value);
   const setCompletions = (value: SetStateAction<string>) => setResourceField("completions", value);
   const setParallelism = (value: SetStateAction<string>) => setResourceField("parallelism", value);
@@ -736,6 +741,12 @@ export default function Home() {
   const setServicePorts = (value: SetStateAction<PortField[]>) => setResourceField("servicePorts", value);
   const setVolumes = (value: SetStateAction<VolumeField[]>) => setResourceField("volumes", value);
 
+  function updateLabel(id: number, patch: Partial<LabelField>) {
+    setLabels((current) =>
+      current.map((label) => (label.id === id ? { ...label, ...patch } : label)),
+    );
+  }
+
   function toggleStorageAccessMode(mode: string, checked: boolean) {
     setStorageAccessModes((current) =>
       checked
@@ -767,6 +778,10 @@ export default function Home() {
           ? {
               ...resource,
               kind: nextKind,
+              labels:
+                kindUsesLabels(nextKind) && resource.labels.length === 0
+                  ? [createDefaultLabel()]
+                  : resource.labels,
               restartPolicy:
                 (nextKind === "Job" || nextKind === "CronJob") && resource.restartPolicy === "Always"
                   ? "Never"
@@ -1153,17 +1168,65 @@ export default function Home() {
                   />
                 )}
               </div>
-              <Field
-                label="Labels"
-                value={labels}
-                onChange={setLabels}
-                hint={
-                  isStorageResource
-                    ? "Comma-separated key=value pairs for organizing and selecting storage resources."
-                    : "Comma-separated key=value pairs. Used as selectors for Deployments and Services."
-                }
-                error={validationErrors.labels}
-              />
+              {kindUsesLabels(kind) && (
+                <div className="labels-editor">
+                  <div className="labels-editor-heading">
+                    <div>
+                      <strong>
+                        Labels<span className="required"> *</span>
+                      </strong>
+                      <span>Used by selectors for Pods, Deployments, and Services.</span>
+                    </div>
+                    <button
+                      className="text-action"
+                      type="button"
+                      onClick={() =>
+                        setLabels((current) => [
+                          ...current,
+                          { id: Date.now(), key: "", value: "" },
+                        ])
+                      }
+                    >
+                      <span aria-hidden="true">＋</span>Add label
+                    </button>
+                  </div>
+                  <div className="labels-list">
+                    {labels.map((label, index) => (
+                      <div className="label-row" key={label.id}>
+                        <Field
+                          label="Key"
+                          value={label.key}
+                          onChange={(value) => updateLabel(label.id, { key: value })}
+                          placeholder="app"
+                          required
+                          error={validationErrors[`label-key-${label.id}`]}
+                        />
+                        <Field
+                          label="Value"
+                          value={label.value}
+                          onChange={(value) => updateLabel(label.id, { value })}
+                          placeholder="example"
+                          required
+                          error={validationErrors[`label-value-${label.id}`]}
+                        />
+                        <button
+                          type="button"
+                          className="remove-button"
+                          aria-label={`Remove label ${index + 1}`}
+                          onClick={() =>
+                            setLabels((current) => current.filter((item) => item.id !== label.id))
+                          }
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  {validationErrors.labels && (
+                    <span className="field-error">{validationErrors.labels}</span>
+                  )}
+                </div>
+              )}
             </section>
 
             {isStorageResource && (
@@ -1917,7 +1980,7 @@ export default function Home() {
               <a
                 href={
                   platform === "OpenShift"
-                    ? `https://docs.redhat.com/en/documentation/openshift_container_platform/${version}/html/network_apis/route-route-openshift-io-v1`
+                    ? `https://docs.redhat.com/en/documentation/openshift_container_platform/${version}/html/api_overview/api-index`
                     : `https://kubernetes.io/docs/reference/generated/kubernetes-api/v${version}/`
                 }
                 target="_blank"

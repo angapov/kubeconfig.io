@@ -475,6 +475,51 @@ summary:focus-visible {
   margin-bottom: 0;
 }
 
+.labels-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.labels-editor-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.labels-editor-heading strong,
+.labels-editor-heading > div > span {
+  display: block;
+}
+
+.labels-editor-heading strong {
+  color: #344054;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.labels-editor-heading > div > span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.labels-list {
+  display: grid;
+  gap: 12px;
+}
+
+.label-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) 34px;
+  align-items: end;
+  gap: 12px;
+}
+
+.label-row .field {
+  margin-bottom: 0;
+}
+
 .section-title {
   min-height: 40px;
   gap: 12px;
@@ -1211,6 +1256,28 @@ summary:focus-visible {
 
   .mount-point-row {
     grid-template-columns: 1fr 34px;
+  }
+
+  .labels-editor-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .labels-editor-heading .text-action {
+    width: 100%;
+  }
+
+  .label-row {
+    grid-template-columns: 1fr 34px;
+  }
+
+  .label-row .field:nth-child(2) {
+    grid-column: 1;
+  }
+
+  .label-row .remove-button {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .mount-point-row .field {

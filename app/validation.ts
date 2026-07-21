@@ -15,6 +15,12 @@ type PortInput = {
   targetPort: string;
 };
 
+type LabelInput = {
+  id: number;
+  key: string;
+  value: string;
+};
+
 type ContainerInput = {
   id: number;
   name: string;
@@ -38,7 +44,7 @@ type ValidationInput = {
   kind: ResourceKind;
   name: string;
   namespace: string;
-  labels: string;
+  labels: LabelInput[];
   replicas: string;
   completions: string;
   parallelism: string;
@@ -117,27 +123,32 @@ function validatePortName(value: string) {
   return undefined;
 }
 
-function validateLabels(value: string) {
-  for (const entry of value.split(",").map((item) => item.trim()).filter(Boolean)) {
-    const separator = entry.includes("=") ? "=" : entry.includes(":") ? ":" : "";
-    if (!separator) return `Label "${entry}" must use key=value.`;
-    const [rawKey, ...valueParts] = entry.split(separator);
-    const key = rawKey.trim();
-    const labelValue = valueParts.join(separator).trim();
-    const slash = key.lastIndexOf("/");
-    const prefix = slash >= 0 ? key.slice(0, slash) : "";
-    const keyName = slash >= 0 ? key.slice(slash + 1) : key;
-    if (!keyName || keyName.length > 63 || !LABEL_NAME_PATTERN.test(keyName)) {
-      return `Label key "${key}" is invalid.`;
-    }
-    if (prefix && (prefix.length > 253 || !DNS_SUBDOMAIN_PATTERN.test(prefix))) {
-      return `Label prefix "${prefix}" must be a DNS subdomain.`;
-    }
-    if (labelValue.length > 63 || (labelValue && !LABEL_NAME_PATTERN.test(labelValue))) {
-      return `Label value "${labelValue}" is invalid.`;
-    }
+function validateLabelKey(value: string) {
+  const key = value.trim();
+  if (!key) return "Label key is required.";
+  const slash = key.lastIndexOf("/");
+  const prefix = slash >= 0 ? key.slice(0, slash) : "";
+  const keyName = slash >= 0 ? key.slice(slash + 1) : key;
+  if (!keyName || keyName.length > 63 || !LABEL_NAME_PATTERN.test(keyName)) {
+    return "Label key name is invalid.";
+  }
+  if (prefix && (prefix.length > 253 || !DNS_SUBDOMAIN_PATTERN.test(prefix))) {
+    return "Label key prefix must be a DNS subdomain.";
   }
   return undefined;
+}
+
+function validateLabelValue(value: string) {
+  const labelValue = value.trim();
+  if (!labelValue) return "Label value is required.";
+  if (labelValue.length > 63 || (labelValue && !LABEL_NAME_PATTERN.test(labelValue))) {
+    return "Label value is invalid.";
+  }
+  return undefined;
+}
+
+function kindUsesLabels(kind: ResourceKind) {
+  return kind === "Pod" || kind === "Deployment" || kind === "Service";
 }
 
 export function validateManifestFields(input: ValidationInput) {
@@ -160,7 +171,21 @@ export function validateManifestFields(input: ValidationInput) {
   if (input.kind !== "PersistentVolume") {
     add("namespace", validateDnsName(input.namespace, "Namespace", true));
   }
-  add("labels", validateLabels(input.labels));
+  if (kindUsesLabels(input.kind)) {
+    if (input.labels.length === 0) {
+      errors.labels = "Add at least one label.";
+    }
+    const labelKeys = new Set<string>();
+    input.labels.forEach((label) => {
+      const key = label.key.trim();
+      add(`label-key-${label.id}`, validateLabelKey(label.key));
+      add(`label-value-${label.id}`, validateLabelValue(label.value));
+      if (key && labelKeys.has(key)) {
+        errors[`label-key-${label.id}`] = "Label keys must be unique.";
+      }
+      if (key) labelKeys.add(key);
+    });
+  }
 
   if (input.kind === "Deployment") {
     const replicaCount = Number(input.replicas);
