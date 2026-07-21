@@ -372,16 +372,7 @@ function createDefaultResource(id: number): ResourceState {
       },
     ],
     servicePorts: [createDefaultPort(0, 1)],
-    volumes: [
-      {
-        id: 1,
-        name: "data",
-        type: "persistentVolumeClaim",
-        source: "",
-        readOnly: false,
-        mountPoints: [{ id: 1, containerId: 1, mountPath: "/mnt" }],
-      },
-    ],
+    volumes: [],
   };
 }
 
@@ -1871,7 +1862,7 @@ export default function Home() {
               <section className="form-section">
                 <div className="section-title with-action">
                   <span className="section-number">03</span>
-                  <div><h3>Volumes</h3><p>Attach storage and configuration to selected containers.</p></div>
+                  <div><h3>Storage</h3><p>Attach storage and configuration to selected containers.</p></div>
                   <button
                     className="text-action"
                     type="button"
@@ -1880,7 +1871,7 @@ export default function Home() {
                         ...current,
                         {
                           id: Date.now(),
-                          name: "",
+                          name: current.length === 0 ? "data" : "",
                           type: "persistentVolumeClaim",
                           source: "",
                           readOnly: false,
