@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type SetStateAction } from "react";
 import { validateManifestFields } from "./validation";
 
 type ResourceKind = "Deployment" | "Pod" | "Service";
@@ -41,6 +41,22 @@ type VolumeField = {
   source: string;
   readOnly: boolean;
   mountPoints: MountPointField[];
+};
+
+type ResourceState = {
+  id: number;
+  kind: ResourceKind;
+  name: string;
+  namespace: string;
+  labels: string;
+  replicas: string;
+  serviceAccount: string;
+  securityExpanded: boolean;
+  restartPolicy: string;
+  serviceType: string;
+  containers: ContainerField[];
+  servicePorts: PortField[];
+  volumes: VolumeField[];
 };
 
 type YamlValue = string | number | boolean | YamlObject | YamlValue[];
@@ -150,6 +166,176 @@ function parseLabels(value: string, fallbackName: string) {
   return Object.keys(labels).length > 0 ? labels : { app: fallbackName || "app" };
 }
 
+function createDefaultResource(id: number): ResourceState {
+  return {
+    id,
+    kind: "Deployment",
+    name: "example",
+    namespace: "production",
+    labels: "app=example",
+    replicas: "1",
+    serviceAccount: "default",
+    securityExpanded: false,
+    restartPolicy: "Always",
+    serviceType: "ClusterIP",
+    containers: [
+      {
+        id: 1,
+        name: "container-1",
+        image: "nginx:latest",
+        pullPolicy: "IfNotPresent",
+        ports: [],
+        resourcesEnabled: false,
+        cpuRequest: "250m",
+        memoryRequest: "256Mi",
+        cpuLimit: "500m",
+        memoryLimit: "512Mi",
+      },
+    ],
+    servicePorts: [createDefaultPort(0, 1)],
+    volumes: [
+      {
+        id: 1,
+        name: "data",
+        type: "persistentVolumeClaim",
+        source: "",
+        readOnly: false,
+        mountPoints: [{ id: 1, containerId: 1, mountPath: "/mnt" }],
+      },
+    ],
+  };
+}
+
+function buildResourceManifest(resourceState: ResourceState) {
+  const {
+    containers,
+    kind,
+    labels,
+    name,
+    namespace,
+    replicas,
+    restartPolicy,
+    securityExpanded,
+    serviceAccount,
+    servicePorts,
+    serviceType,
+    volumes,
+  } = resourceState;
+  const parsedLabels = parseLabels(labels, name);
+  const metadata: YamlObject = {
+    name: name || "untitled",
+    namespace: namespace || "default",
+    labels: parsedLabels,
+  };
+
+  const volumeSpecs = volumes.map((volume) => {
+    const volumeName = volume.name || "volume";
+    if (volume.type === "configMap") {
+      return { name: volumeName, configMap: { name: volume.source || `${volumeName}-config` } };
+    }
+    if (volume.type === "secret") {
+      return { name: volumeName, secret: { secretName: volume.source || `${volumeName}-secret` } };
+    }
+    if (volume.type === "persistentVolumeClaim") {
+      return {
+        name: volumeName,
+        persistentVolumeClaim: { claimName: volume.source || `${volumeName}-pvc` },
+      };
+    }
+    return {
+      name: volumeName,
+      emptyDir: volume.source ? { sizeLimit: volume.source } : {},
+    };
+  });
+
+  const containerSpecs = containers.map((container) => ({
+    name: container.name || "app",
+    image: container.image || "nginx:latest",
+    imagePullPolicy: container.pullPolicy,
+    ports: container.ports
+      .filter((port) => port.port.trim() !== "")
+      .map((port) => ({
+        name: port.name || undefined,
+        containerPort: Number(port.port),
+        protocol: port.protocol,
+      })),
+    resources: container.resourcesEnabled
+      ? {
+          requests: {
+            cpu: container.cpuRequest || undefined,
+            memory: container.memoryRequest || undefined,
+          },
+          limits: {
+            cpu: container.cpuLimit || undefined,
+            memory: container.memoryLimit || undefined,
+          },
+        }
+      : undefined,
+    volumeMounts: volumes.flatMap((volume) =>
+      volume.mountPoints
+        .filter((mountPoint) => mountPoint.containerId === container.id)
+        .map((mountPoint) => ({
+          name: volume.name || "volume",
+          mountPath: mountPoint.mountPath || "/mnt",
+          readOnly: volume.readOnly || undefined,
+        })),
+    ),
+  }));
+
+  let resource: YamlObject;
+
+  if (kind === "Service") {
+    resource = {
+      apiVersion: "v1",
+      kind: "Service",
+      metadata,
+      spec: {
+        type: serviceType,
+        selector: parsedLabels,
+        ports: servicePorts
+          .filter((port) => port.port.trim() !== "")
+          .map((port) => ({
+            name: port.name || undefined,
+            port: Number(port.port),
+            targetPort: Number(port.targetPort) || Number(port.port),
+            protocol: port.protocol,
+          })),
+      },
+    };
+  } else {
+    const podSpec: YamlObject = {
+      serviceAccountName: securityExpanded ? serviceAccount || undefined : undefined,
+      restartPolicy: kind === "Deployment" ? undefined : restartPolicy,
+      containers: containerSpecs,
+      volumes: volumeSpecs,
+    };
+
+    resource =
+      kind === "Pod"
+        ? {
+            apiVersion: "v1",
+            kind: "Pod",
+            metadata,
+            spec: podSpec,
+          }
+        : {
+            apiVersion: "apps/v1",
+            kind: "Deployment",
+            metadata,
+            spec: {
+              replicas: Number(replicas) || 1,
+              selector: { matchLabels: parsedLabels },
+              template: {
+                metadata: { labels: parsedLabels },
+                spec: podSpec,
+              },
+            },
+          };
+  }
+
+  return `${toYaml(resource).join("\n")}\n`;
+}
+
 function Field({
   label,
   value,
@@ -221,190 +407,14 @@ function SelectField({
 
 export default function Home() {
   const [version, setVersion] = useState("1.35");
-  const [kind, setKind] = useState<ResourceKind>("Deployment");
-  const [name, setName] = useState("example");
-  const [namespace, setNamespace] = useState("production");
-  const [labels, setLabels] = useState("app=example");
-  const [replicas, setReplicas] = useState("1");
-  const [serviceAccount, setServiceAccount] = useState("default");
-  const [securityExpanded, setSecurityExpanded] = useState(false);
-  const [restartPolicy, setRestartPolicy] = useState("Always");
-  const [serviceType, setServiceType] = useState("ClusterIP");
-  const [containers, setContainers] = useState<ContainerField[]>([
-    {
-      id: 1,
-      name: "container-1",
-      image: "nginx:latest",
-      pullPolicy: "IfNotPresent",
-      ports: [],
-      resourcesEnabled: false,
-      cpuRequest: "250m",
-      memoryRequest: "256Mi",
-      cpuLimit: "500m",
-      memoryLimit: "512Mi",
-    },
-  ]);
-  const [servicePorts, setServicePorts] = useState<PortField[]>([
-    createDefaultPort(0, 1),
-  ]);
-  const [volumes, setVolumes] = useState<VolumeField[]>([
-    {
-      id: 1,
-      name: "data",
-      type: "persistentVolumeClaim",
-      source: "",
-      readOnly: false,
-      mountPoints: [{ id: 1, containerId: 1, mountPath: "/mnt" }],
-    },
-  ]);
+  const [resources, setResources] = useState<ResourceState[]>(() => [createDefaultResource(1)]);
+  const [activeResourceId, setActiveResourceId] = useState(1);
+  const nextResourceId = useRef(2);
   const [copied, setCopied] = useState(false);
 
-  const validationErrors = useMemo(
-    () =>
-      validateManifestFields({
-        containers,
-        kind,
-        labels,
-        name,
-        namespace,
-        replicas,
-        securityExpanded,
-        serviceAccount,
-        servicePorts,
-        volumes,
-      }),
-    [
-      containers,
-      kind,
-      labels,
-      name,
-      namespace,
-      replicas,
-      securityExpanded,
-      serviceAccount,
-      servicePorts,
-      volumes,
-    ],
-  );
-  const validationErrorCount = Object.keys(validationErrors).length;
-  const isManifestValid = validationErrorCount === 0;
-
-  const manifest = useMemo(() => {
-    const parsedLabels = parseLabels(labels, name);
-    const metadata: YamlObject = {
-      name: name || "untitled",
-      namespace: namespace || "default",
-      labels: parsedLabels,
-    };
-
-    const volumeSpecs = volumes.map((volume) => {
-      const volumeName = volume.name || "volume";
-      if (volume.type === "configMap") {
-        return { name: volumeName, configMap: { name: volume.source || `${volumeName}-config` } };
-      }
-      if (volume.type === "secret") {
-        return { name: volumeName, secret: { secretName: volume.source || `${volumeName}-secret` } };
-      }
-      if (volume.type === "persistentVolumeClaim") {
-        return {
-          name: volumeName,
-          persistentVolumeClaim: { claimName: volume.source || `${volumeName}-pvc` },
-        };
-      }
-      return {
-        name: volumeName,
-        emptyDir: volume.source ? { sizeLimit: volume.source } : {},
-      };
-    });
-
-    const containerSpecs = containers.map((container) => ({
-      name: container.name || "app",
-      image: container.image || "nginx:latest",
-      imagePullPolicy: container.pullPolicy,
-      ports: container.ports
-        .filter((port) => port.port.trim() !== "")
-        .map((port) => ({
-          name: port.name || undefined,
-          containerPort: Number(port.port),
-          protocol: port.protocol,
-        })),
-      resources: container.resourcesEnabled
-        ? {
-            requests: {
-              cpu: container.cpuRequest || undefined,
-              memory: container.memoryRequest || undefined,
-            },
-            limits: {
-              cpu: container.cpuLimit || undefined,
-              memory: container.memoryLimit || undefined,
-            },
-          }
-        : undefined,
-      volumeMounts: volumes
-        .flatMap((volume) =>
-          volume.mountPoints
-            .filter((mountPoint) => mountPoint.containerId === container.id)
-            .map((mountPoint) => ({
-              name: volume.name || "volume",
-              mountPath: mountPoint.mountPath || "/mnt",
-              readOnly: volume.readOnly || undefined,
-            })),
-        ),
-    }));
-
-    let resource: YamlObject;
-
-    if (kind === "Service") {
-      resource = {
-        apiVersion: "v1",
-        kind: "Service",
-        metadata,
-        spec: {
-          type: serviceType,
-          selector: parsedLabels,
-          ports: servicePorts
-            .filter((port) => port.port.trim() !== "")
-            .map((port) => ({
-              name: port.name || undefined,
-              port: Number(port.port),
-              targetPort: Number(port.targetPort) || Number(port.port),
-              protocol: port.protocol,
-            })),
-        },
-      };
-    } else {
-      const podSpec: YamlObject = {
-        serviceAccountName: securityExpanded ? serviceAccount || undefined : undefined,
-        restartPolicy: kind === "Deployment" ? undefined : restartPolicy,
-        containers: containerSpecs,
-        volumes: volumeSpecs,
-      };
-
-      resource =
-        kind === "Pod"
-          ? {
-              apiVersion: "v1",
-              kind: "Pod",
-              metadata,
-              spec: podSpec,
-            }
-          : {
-              apiVersion: "apps/v1",
-              kind: "Deployment",
-              metadata,
-              spec: {
-                replicas: Number(replicas) || 1,
-                selector: { matchLabels: parsedLabels },
-                template: {
-                  metadata: { labels: parsedLabels },
-                  spec: podSpec,
-                },
-              },
-            };
-    }
-
-    return `${toYaml(resource).join("\n")}\n`;
-  }, [
+  const activeResource =
+    resources.find((resource) => resource.id === activeResourceId) ?? resources[0];
+  const {
     containers,
     kind,
     labels,
@@ -414,10 +424,58 @@ export default function Home() {
     restartPolicy,
     securityExpanded,
     serviceAccount,
-    serviceType,
     servicePorts,
+    serviceType,
     volumes,
-  ]);
+  } = activeResource;
+
+  function setResourceField<Key extends keyof ResourceState>(
+    key: Key,
+    value: SetStateAction<ResourceState[Key]>,
+  ) {
+    setResources((current) =>
+      current.map((resource) => {
+        if (resource.id !== activeResourceId) return resource;
+        const nextValue =
+          typeof value === "function"
+            ? (value as (previous: ResourceState[Key]) => ResourceState[Key])(resource[key])
+            : value;
+        return { ...resource, [key]: nextValue };
+      }),
+    );
+  }
+
+  const setKind = (value: SetStateAction<ResourceKind>) => setResourceField("kind", value);
+  const setName = (value: SetStateAction<string>) => setResourceField("name", value);
+  const setNamespace = (value: SetStateAction<string>) => setResourceField("namespace", value);
+  const setLabels = (value: SetStateAction<string>) => setResourceField("labels", value);
+  const setReplicas = (value: SetStateAction<string>) => setResourceField("replicas", value);
+  const setServiceAccount = (value: SetStateAction<string>) => setResourceField("serviceAccount", value);
+  const setSecurityExpanded = (value: SetStateAction<boolean>) => setResourceField("securityExpanded", value);
+  const setRestartPolicy = (value: SetStateAction<string>) => setResourceField("restartPolicy", value);
+  const setServiceType = (value: SetStateAction<string>) => setResourceField("serviceType", value);
+  const setContainers = (value: SetStateAction<ContainerField[]>) => setResourceField("containers", value);
+  const setServicePorts = (value: SetStateAction<PortField[]>) => setResourceField("servicePorts", value);
+  const setVolumes = (value: SetStateAction<VolumeField[]>) => setResourceField("volumes", value);
+
+  const validationByResource = useMemo(
+    () =>
+      new Map(
+        resources.map((resource) => [resource.id, validateManifestFields(resource)]),
+      ),
+    [resources],
+  );
+  const validationErrors = validationByResource.get(activeResourceId) ?? {};
+  const validationErrorCount = Array.from(validationByResource.values()).reduce(
+    (total, errors) => total + Object.keys(errors).length,
+    0,
+  );
+  const isManifestValid = validationErrorCount === 0;
+
+  const manifest = useMemo(
+    () => resources.map(buildResourceManifest).join("---\n"),
+    [resources],
+  );
 
   function updateServicePort(id: number, patch: Partial<PortField>) {
     setServicePorts((current) =>
@@ -484,6 +542,24 @@ export default function Home() {
     );
   }
 
+  function addResourceTab() {
+    if (resources.length >= 4) return;
+    const resourceId = nextResourceId.current;
+    nextResourceId.current += 1;
+    setResources((current) => [...current, createDefaultResource(resourceId)]);
+    setActiveResourceId(resourceId);
+  }
+
+  function closeResourceTab(resourceId: number) {
+    if (resources.length === 1) return;
+    const closingIndex = resources.findIndex((resource) => resource.id === resourceId);
+    const nextResources = resources.filter((resource) => resource.id !== resourceId);
+    setResources(nextResources);
+    if (resourceId === activeResourceId) {
+      setActiveResourceId(nextResources[Math.min(closingIndex, nextResources.length - 1)].id);
+    }
+  }
+
   async function copyManifest() {
     if (!isManifestValid) return;
     await navigator.clipboard.writeText(manifest);
@@ -497,12 +573,13 @@ export default function Home() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${name || kind.toLowerCase()}.yaml`;
+    link.download = resources.length > 1 ? "kubernetes-resources.yaml" : `${name || kind.toLowerCase()}.yaml`;
     link.click();
     URL.revokeObjectURL(url);
   }
 
   const apiVersion = kind === "Deployment" ? "apps/v1" : "v1";
+  const manifestFileName = resources.length > 1 ? "kubernetes-resources.yaml" : `${name || kind.toLowerCase()}.yaml`;
   const manifestLines = manifest.split("\n");
 
   return (
@@ -549,7 +626,51 @@ export default function Home() {
             <div className="synced-state"><span />Synced</div>
           </div>
 
-          <div className="form-content">
+          <div className="resource-tabs" aria-label="Kubernetes resources">
+            <div className="resource-tab-list" role="tablist">
+              {resources.map((resource, index) => {
+                const tabErrorCount = Object.keys(validationByResource.get(resource.id) ?? {}).length;
+                const isActive = resource.id === activeResourceId;
+                return (
+                  <div className={`resource-tab${isActive ? " active" : ""}`} key={resource.id}>
+                    <button
+                      type="button"
+                      className="resource-tab-select"
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => setActiveResourceId(resource.id)}
+                    >
+                      <span>{resource.name || `Resource ${index + 1}`}</span>
+                      <small>{resource.kind}</small>
+                      {tabErrorCount > 0 && <i title={`${tabErrorCount} validation errors`} />}
+                    </button>
+                    <button
+                      type="button"
+                      className="resource-tab-close"
+                      aria-label={`Close ${resource.name || `resource ${index + 1}`} tab`}
+                      onClick={() => closeResourceTab(resource.id)}
+                      disabled={resources.length === 1}
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
+              <button
+                type="button"
+                className="resource-tab-add"
+                aria-label="Add resource tab"
+                title={resources.length >= 4 ? "Maximum of 4 resource tabs" : "Add resource tab"}
+                onClick={addResourceTab}
+                disabled={resources.length >= 4}
+              >
+                +
+              </button>
+            </div>
+            <span className="resource-tab-limit">{resources.length}/4 resources</span>
+          </div>
+
+          <div className="form-content" key={activeResourceId}>
             <section className="form-section">
               <div className="section-title">
                 <span className="section-number">01</span>
@@ -1078,7 +1199,7 @@ export default function Home() {
           <div className="yaml-toolbar">
             <div className="file-tab">
               <span className="file-dot" />
-              {name || kind.toLowerCase()}.yaml
+              {manifestFileName}
             </div>
             <div className="yaml-actions">
               <button type="button" onClick={downloadManifest} disabled={!isManifestValid}>Download</button>
@@ -1094,7 +1215,7 @@ export default function Home() {
                 ? "Kubernetes validation passed"
                 : `${validationErrorCount} validation ${validationErrorCount === 1 ? "error" : "errors"}`}
             </div>
-            <span>{apiVersion} · Kubernetes v{version}</span>
+            <span>{resources.length} {resources.length === 1 ? "resource" : "resources"} · Kubernetes v{version}</span>
           </div>
           <div className="code-editor" aria-label="Generated Kubernetes YAML">
             <div className="line-numbers" aria-hidden="true">
