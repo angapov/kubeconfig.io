@@ -38,7 +38,7 @@ jobs:
         run: npm run build:pages
         env:
           GITHUB_PAGES: "true"
-          NEXT_PUBLIC_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          NEXT_PUBLIC_BASE_PATH: ""
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v5
