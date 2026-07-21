@@ -587,6 +587,10 @@ summary:focus-visible {
   border-top: 1px solid var(--line);
 }
 
+.mount-points-section + .check-field {
+  margin-top: 12px;
+}
+
 .mount-points-heading {
   margin-bottom: 11px;
   display: flex;

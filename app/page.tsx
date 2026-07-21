@@ -59,6 +59,13 @@ function createDefaultPort(index: number, id = Date.now()): PortField {
   return { id, name: "", port: "", targetPort: "", protocol: "TCP" };
 }
 
+function getVolumeSourcePlaceholder(type: VolumeType) {
+  if (type === "persistentVolumeClaim") return "Existing PVC name";
+  if (type === "configMap") return "Existing ConfigMap name";
+  if (type === "secret") return "Existing Secret name";
+  return "1Gi (optional)";
+}
+
 function isPlainObject(value: unknown): value is YamlObject {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -211,6 +218,7 @@ export default function Home() {
   const [labels, setLabels] = useState("app=checkout-api, tier=backend");
   const [replicas, setReplicas] = useState("3");
   const [serviceAccount, setServiceAccount] = useState("default");
+  const [securityExpanded, setSecurityExpanded] = useState(false);
   const [restartPolicy, setRestartPolicy] = useState("Always");
   const [serviceType, setServiceType] = useState("ClusterIP");
   const [containers, setContainers] = useState<ContainerField[]>([
@@ -233,7 +241,7 @@ export default function Home() {
   const [volumes, setVolumes] = useState<VolumeField[]>([
     {
       id: 1,
-      name: "checkout-data",
+      name: "data",
       type: "persistentVolumeClaim",
       source: "checkout-data-pvc",
       readOnly: false,
@@ -327,7 +335,7 @@ export default function Home() {
       };
     } else {
       const podSpec: YamlObject = {
-        serviceAccountName: serviceAccount || undefined,
+        serviceAccountName: securityExpanded ? serviceAccount || undefined : undefined,
         restartPolicy: kind === "Deployment" ? undefined : restartPolicy,
         containers: containerSpecs,
         volumes: volumeSpecs,
@@ -365,6 +373,7 @@ export default function Home() {
     namespace,
     replicas,
     restartPolicy,
+    securityExpanded,
     serviceAccount,
     serviceType,
     servicePorts,
@@ -735,7 +744,11 @@ export default function Home() {
 
             {kind !== "Service" && (
               <section className="form-section collapsible-form-section">
-                <details className="security-section">
+                <details
+                  className="security-section"
+                  open={securityExpanded}
+                  onToggle={(event) => setSecurityExpanded(event.currentTarget.open)}
+                >
                   <summary>
                     <span className="section-number">03</span>
                     <div>
@@ -828,7 +841,7 @@ export default function Home() {
                         ...current,
                         {
                           id: Date.now(),
-                          name: `volume-${current.length + 1}`,
+                          name: "",
                           type: "emptyDir",
                           source: "",
                           readOnly: false,
@@ -876,7 +889,7 @@ export default function Home() {
                           label={volume.type === "emptyDir" ? "Size limit" : "Source name"}
                           value={volume.source}
                           onChange={(value) => updateVolume(volume.id, { source: value })}
-                          placeholder={volume.type === "emptyDir" ? "1Gi (optional)" : "Existing object name"}
+                          placeholder={getVolumeSourcePlaceholder(volume.type)}
                         />
                       </div>
 
