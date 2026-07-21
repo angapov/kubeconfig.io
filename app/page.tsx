@@ -190,16 +190,21 @@ function SelectField({
   value,
   onChange,
   options,
+  required = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
+  required?: boolean;
 }) {
   return (
     <label className="field">
-      <span className="field-label">{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
+      <span className="field-label">
+        {label}
+        {required && <span className="required"> *</span>}
+      </span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} required={required}>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
@@ -473,6 +478,7 @@ export default function Home() {
           </div>
           <div>
             <div className="brand-name">Kubeconfig.io</div>
+            <div className="brand-tagline">Visual Kubernetes YAML builder</div>
           </div>
         </div>
 
@@ -501,10 +507,6 @@ export default function Home() {
         </div>
       </header>
 
-      <section className="intro">
-        <p className="eyebrow">Visual Kubernetes YAML builder</p>
-      </section>
-
       <section className="workspace">
         <div className="builder-panel">
           <div className="panel-heading">
@@ -524,6 +526,7 @@ export default function Home() {
                   label="Object type"
                   value={kind}
                   onChange={(value) => setKind(value as ResourceKind)}
+                  required
                   options={[
                     { value: "Deployment", label: "Deployment" },
                     { value: "Pod", label: "Pod" },
@@ -674,6 +677,7 @@ export default function Home() {
                                 value={port.port}
                                 onChange={(value) => updateContainerPort(container.id, port.id, { port: value })}
                                 type="number"
+                                required
                               />
                               <SelectField
                                 label="Protocol"
@@ -742,33 +746,6 @@ export default function Home() {
               </section>
             )}
 
-            {kind !== "Service" && (
-              <section className="form-section collapsible-form-section">
-                <details
-                  className="security-section"
-                  open={securityExpanded}
-                  onToggle={(event) => setSecurityExpanded(event.currentTarget.open)}
-                >
-                  <summary>
-                    <span className="section-number">03</span>
-                    <div>
-                      <h3>Security</h3>
-                      <p>Configure pod-level identity and security settings.</p>
-                    </div>
-                    <span className="disclosure-icon" aria-hidden="true">⌄</span>
-                  </summary>
-                  <div className="security-content">
-                    <Field
-                      label="Service account name"
-                      value={serviceAccount}
-                      onChange={setServiceAccount}
-                      hint="Must exist in the selected namespace."
-                    />
-                  </div>
-                </details>
-              </section>
-            )}
-
             {kind === "Service" && (
             <section className="form-section">
               <div className="section-title with-action">
@@ -800,6 +777,7 @@ export default function Home() {
                       value={port.port}
                       onChange={(value) => updateServicePort(port.id, { port: value })}
                       type="number"
+                      required
                     />
                     <Field
                       label="Target port"
@@ -831,7 +809,7 @@ export default function Home() {
             {kind !== "Service" && (
               <section className="form-section">
                 <div className="section-title with-action">
-                  <span className="section-number">04</span>
+                  <span className="section-number">03</span>
                   <div><h3>Volumes</h3><p>Attach storage and configuration to selected containers.</p></div>
                   <button
                     className="text-action"
@@ -873,16 +851,22 @@ export default function Home() {
                         </button>
                       </div>
                       <div className="field-grid two-col">
-                        <Field label="Volume name" value={volume.name} onChange={(value) => updateVolume(volume.id, { name: value })} />
+                        <Field
+                          label="Volume name"
+                          value={volume.name}
+                          onChange={(value) => updateVolume(volume.id, { name: value })}
+                          required
+                        />
                         <SelectField
                           label="Volume type"
                           value={volume.type}
                           onChange={(value) => updateVolume(volume.id, { type: value as VolumeType, source: "" })}
+                          required
                           options={[
                             { value: "emptyDir", label: "emptyDir" },
                             { value: "configMap", label: "ConfigMap" },
                             { value: "secret", label: "Secret" },
-                            { value: "persistentVolumeClaim", label: "PVC" },
+                            { value: "persistentVolumeClaim", label: "PersistentVolumeClaim" },
                           ]}
                         />
                         <Field
@@ -890,6 +874,7 @@ export default function Home() {
                           value={volume.source}
                           onChange={(value) => updateVolume(volume.id, { source: value })}
                           placeholder={getVolumeSourcePlaceholder(volume.type)}
+                          required={volume.type !== "emptyDir"}
                         />
                       </div>
 
@@ -941,6 +926,7 @@ export default function Home() {
                                   value: String(container.id),
                                   label: container.name || `Container ${containerIndex + 1}`,
                                 }))}
+                                required
                               />
                               <Field
                                 label="Mount path inside container"
@@ -948,6 +934,7 @@ export default function Home() {
                                 onChange={(value) =>
                                   updateMountPoint(volume.id, mountPoint.id, { mountPath: value })
                                 }
+                                required
                               />
                               <button
                                 type="button"
@@ -980,6 +967,33 @@ export default function Home() {
                     </div>
                   ))}
                 </div>
+              </section>
+            )}
+
+            {kind !== "Service" && (
+              <section className="form-section collapsible-form-section">
+                <details
+                  className="security-section"
+                  open={securityExpanded}
+                  onToggle={(event) => setSecurityExpanded(event.currentTarget.open)}
+                >
+                  <summary>
+                    <span className="section-number">04</span>
+                    <div>
+                      <h3>Security</h3>
+                      <p>Configure pod-level identity and security settings.</p>
+                    </div>
+                    <span className="disclosure-icon" aria-hidden="true">⌄</span>
+                  </summary>
+                  <div className="security-content">
+                    <Field
+                      label="Service account name"
+                      value={serviceAccount}
+                      onChange={setServiceAccount}
+                      hint="Must exist in the selected namespace."
+                    />
+                  </div>
+                </details>
               </section>
             )}
 

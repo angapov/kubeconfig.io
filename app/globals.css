@@ -115,6 +115,12 @@ summary:focus-visible {
   letter-spacing: -0.02em;
 }
 
+.brand-tagline {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
 .version-picker {
   gap: 10px;
   padding: 7px 8px 7px 12px;
@@ -183,12 +189,6 @@ summary:focus-visible {
   box-shadow: 0 0 0 5px var(--green-soft);
 }
 
-.intro {
-  max-width: 1760px;
-  margin: 0 auto;
-  padding: 28px clamp(20px, 3.2vw, 54px) 18px;
-}
-
 .eyebrow,
 .panel-kicker {
   margin: 0;
@@ -201,7 +201,7 @@ summary:focus-visible {
 .workspace {
   max-width: 1760px;
   margin: 0 auto;
-  padding: 0 clamp(20px, 3.2vw, 54px) 54px;
+  padding: 28px clamp(20px, 3.2vw, 54px) 54px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(500px, 0.92fr);
   align-items: start;
@@ -335,7 +335,7 @@ summary:focus-visible {
 }
 
 .required {
-  color: var(--blue);
+  color: #d92d20;
 }
 
 .field input,
