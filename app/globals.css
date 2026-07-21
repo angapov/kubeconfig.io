@@ -374,6 +374,26 @@ summary:focus-visible {
   line-height: 1.4;
 }
 
+.field-error {
+  display: block;
+  margin-top: 6px;
+  color: #d92d20;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.field input[aria-invalid="true"],
+.field select[aria-invalid="true"] {
+  border-color: #f04438;
+  background: #fffafa;
+}
+
+.field input[aria-invalid="true"]:focus,
+.field select[aria-invalid="true"]:focus {
+  border-color: #d92d20;
+  box-shadow: 0 0 0 3px rgba(217, 45, 32, 0.1);
+}
+
 .container-card,
 .volume-card {
   display: grid;
@@ -749,6 +769,15 @@ summary:focus-visible {
   background: #152b47;
 }
 
+.yaml-actions button:disabled,
+.yaml-actions button:disabled:hover {
+  cursor: not-allowed;
+  color: #667892;
+  border-color: #233a58;
+  background: #102036;
+  opacity: 0.65;
+}
+
 .yaml-actions .copy-button {
   color: #fff;
   border-color: var(--blue);
@@ -757,6 +786,13 @@ summary:focus-visible {
 
 .yaml-actions .copy-button:hover {
   background: #286ce8;
+}
+
+.yaml-actions .copy-button:disabled,
+.yaml-actions .copy-button:disabled:hover {
+  color: #667892;
+  border-color: #233a58;
+  background: #102036;
 }
 
 .editor-meta {
@@ -777,10 +813,22 @@ summary:focus-visible {
   font-weight: 650;
 }
 
+.editor-meta > div.invalid-state {
+  color: #fda29b;
+}
+
 .valid-dot {
   width: 7px;
   height: 7px;
   box-shadow: none;
+}
+
+.invalid-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #f04438;
 }
 
 .code-editor {
@@ -842,6 +890,21 @@ summary:focus-visible {
   height: 6px;
   border-radius: 50%;
   background: #17b26a;
+}
+
+.footer-invalid {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #fda29b;
+}
+
+.footer-invalid i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f04438;
 }
 
 @media (max-width: 1220px) {

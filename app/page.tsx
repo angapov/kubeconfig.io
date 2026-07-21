@@ -66,6 +66,62 @@ function getVolumeSourcePlaceholder(type: VolumeType) {
   return "1Gi (optional)";
 }
 
+const DNS_SUBDOMAIN_PATTERN = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
+const DNS_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+const LABEL_NAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?$/;
+const PORT_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+
+function validateDnsName(value: string, label: string, labelOnly = false) {
+  const trimmed = value.trim();
+  if (!trimmed) return `${label} is required.`;
+  const maximum = labelOnly ? 63 : 253;
+  const pattern = labelOnly ? DNS_LABEL_PATTERN : DNS_SUBDOMAIN_PATTERN;
+  if (trimmed.length > maximum || !pattern.test(trimmed)) {
+    return `${label} must use lowercase letters, numbers${labelOnly ? "" : ", dots"}, or hyphens and start and end with a letter or number.`;
+  }
+  return undefined;
+}
+
+function validatePort(value: string, label: string, required = true) {
+  if (!value.trim()) return required ? `${label} is required.` : undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    return `${label} must be an integer from 1 to 65535.`;
+  }
+  return undefined;
+}
+
+function validatePortName(value: string) {
+  if (!value) return undefined;
+  if (value.length > 15 || !PORT_NAME_PATTERN.test(value) || !/[a-z]/.test(value)) {
+    return "Port name must be 15 characters or fewer, contain a letter, and use lowercase letters, numbers, or hyphens.";
+  }
+  return undefined;
+}
+
+function validateLabels(value: string) {
+  for (const entry of value.split(",").map((item) => item.trim()).filter(Boolean)) {
+    const separator = entry.includes("=") ? "=" : entry.includes(":") ? ":" : "";
+    if (!separator) return `Label "${entry}" must use key=value.`;
+    const [rawKey, ...valueParts] = entry.split(separator);
+    const key = rawKey.trim();
+    const labelValue = valueParts.join(separator).trim();
+    const slash = key.lastIndexOf("/");
+    const prefix = slash >= 0 ? key.slice(0, slash) : "";
+    const keyName = slash >= 0 ? key.slice(slash + 1) : key;
+    if (!keyName || keyName.length > 63 || !LABEL_NAME_PATTERN.test(keyName)) {
+      return `Label key "${key}" is invalid.`;
+    }
+    if (prefix && (prefix.length > 253 || !DNS_SUBDOMAIN_PATTERN.test(prefix))) {
+      return `Label prefix "${prefix}" must be a DNS subdomain.`;
+    }
+    if (labelValue.length > 63 || (labelValue && !LABEL_NAME_PATTERN.test(labelValue))) {
+      return `Label value "${labelValue}" is invalid.`;
+    }
+  }
+  return undefined;
+}
+
 function isPlainObject(value: unknown): value is YamlObject {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -157,6 +213,7 @@ function Field({
   type = "text",
   required = false,
   hint,
+  error,
 }: {
   label: string;
   value: string;
@@ -165,9 +222,10 @@ function Field({
   type?: "text" | "number";
   required?: boolean;
   hint?: string;
+  error?: string;
 }) {
   return (
-    <label className="field">
+    <label className={`field${error ? " field-invalid" : ""}`}>
       <span className="field-label">
         {label}
         {required && <span className="required"> *</span>}
@@ -179,8 +237,9 @@ function Field({
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         required={required}
+        aria-invalid={Boolean(error)}
       />
-      {hint && <span className="field-hint">{hint}</span>}
+      {error ? <span className="field-error">{error}</span> : hint && <span className="field-hint">{hint}</span>}
     </label>
   );
 }
@@ -254,6 +313,102 @@ export default function Home() {
     },
   ]);
   const [copied, setCopied] = useState(false);
+
+  const validationErrors = useMemo(() => {
+    const errors: Record<string, string> = {};
+    const add = (key: string, error?: string) => {
+      if (error) errors[key] = error;
+    };
+
+    add("name", validateDnsName(name, `${kind} name`, kind === "Service"));
+    add("namespace", validateDnsName(namespace, "Namespace", true));
+    add("labels", validateLabels(labels));
+
+    if (kind === "Deployment") {
+      const replicaCount = Number(replicas);
+      if (!Number.isInteger(replicaCount) || replicaCount < 0) {
+        errors.replicas = "Replicas must be a non-negative integer.";
+      }
+    }
+
+    if (kind === "Service") {
+      const portNames = new Set<string>();
+      servicePorts.forEach((port) => {
+        add(`service-port-name-${port.id}`, validatePortName(port.name));
+        add(`service-port-${port.id}`, validatePort(port.port, "Service port"));
+        add(`service-target-port-${port.id}`, validatePort(port.targetPort, "Target port", false));
+        if (servicePorts.length > 1 && !port.name) {
+          errors[`service-port-name-${port.id}`] = "A unique name is required when a Service has multiple ports.";
+        } else if (port.name && portNames.has(port.name)) {
+          errors[`service-port-name-${port.id}`] = "Service port names must be unique.";
+        }
+        if (port.name) portNames.add(port.name);
+      });
+      return errors;
+    }
+
+    const containerNames = new Set<string>();
+    containers.forEach((container) => {
+      add(`container-name-${container.id}`, validateDnsName(container.name, "Container name", true));
+      if (!container.image.trim()) errors[`container-image-${container.id}`] = "Container image is required.";
+      if (containerNames.has(container.name)) {
+        errors[`container-name-${container.id}`] = "Container names must be unique within a Pod.";
+      }
+      containerNames.add(container.name);
+
+      const portNames = new Set<string>();
+      container.ports.forEach((port) => {
+        add(`container-port-name-${container.id}-${port.id}`, validatePortName(port.name));
+        add(`container-port-${container.id}-${port.id}`, validatePort(port.port, "Container port"));
+        if (port.name && portNames.has(port.name)) {
+          errors[`container-port-name-${container.id}-${port.id}`] = "Port names must be unique within a container.";
+        }
+        if (port.name) portNames.add(port.name);
+      });
+    });
+
+    const volumeNames = new Set<string>();
+    volumes.forEach((volume) => {
+      add(`volume-name-${volume.id}`, validateDnsName(volume.name, "Volume name", true));
+      if (volumeNames.has(volume.name)) {
+        errors[`volume-name-${volume.id}`] = "Volume names must be unique within a Pod.";
+      }
+      volumeNames.add(volume.name);
+
+      if (volume.type !== "emptyDir" && volume.source.trim()) {
+        add(`volume-source-${volume.id}`, validateDnsName(volume.source, "Existing object name"));
+      }
+      volume.mountPoints.forEach((mountPoint) => {
+        if (!containers.some((container) => container.id === mountPoint.containerId)) {
+          errors[`mount-container-${volume.id}-${mountPoint.id}`] = "Select an existing container.";
+        }
+        if (!mountPoint.mountPath.trim()) {
+          errors[`mount-path-${volume.id}-${mountPoint.id}`] = "Mount path is required.";
+        } else if (!mountPoint.mountPath.startsWith("/")) {
+          errors[`mount-path-${volume.id}-${mountPoint.id}`] = "Mount path must be absolute and start with /.";
+        }
+      });
+    });
+
+    if (securityExpanded && serviceAccount.trim()) {
+      add("service-account", validateDnsName(serviceAccount, "Service account name"));
+    }
+
+    return errors;
+  }, [
+    containers,
+    kind,
+    labels,
+    name,
+    namespace,
+    replicas,
+    securityExpanded,
+    serviceAccount,
+    servicePorts,
+    volumes,
+  ]);
+  const validationErrorCount = Object.keys(validationErrors).length;
+  const isManifestValid = validationErrorCount === 0;
 
   const manifest = useMemo(() => {
     const parsedLabels = parseLabels(labels, name);
@@ -451,12 +606,14 @@ export default function Home() {
   }
 
   async function copyManifest() {
+    if (!isManifestValid) return;
     await navigator.clipboard.writeText(manifest);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
   }
 
   function downloadManifest() {
+    if (!isManifestValid) return;
     const blob = new Blob([manifest], { type: "text/yaml;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -532,10 +689,16 @@ export default function Home() {
                     { value: "Service", label: "Service" },
                   ]}
                 />
-                <Field label="Name" value={name} onChange={setName} required />
-                <Field label="Namespace" value={namespace} onChange={setNamespace} />
+                <Field label="Name" value={name} onChange={setName} required error={validationErrors.name} />
+                <Field label="Namespace" value={namespace} onChange={setNamespace} error={validationErrors.namespace} />
                 {kind === "Deployment" && (
-                  <Field label="Replicas" value={replicas} onChange={setReplicas} type="number" />
+                  <Field
+                    label="Replicas"
+                    value={replicas}
+                    onChange={setReplicas}
+                    type="number"
+                    error={validationErrors.replicas}
+                  />
                 )}
                 {kind === "Pod" && (
                   <SelectField
@@ -559,6 +722,7 @@ export default function Home() {
                 value={labels}
                 onChange={setLabels}
                 hint="Comma-separated key=value pairs. Used as selectors for Deployments and Services."
+                error={validationErrors.labels}
               />
             </section>
 
@@ -613,6 +777,7 @@ export default function Home() {
                           value={container.name}
                           onChange={(value) => updateContainer(container.id, { name: value })}
                           required
+                          error={validationErrors[`container-name-${container.id}`]}
                         />
                         <SelectField
                           label="Image pull policy"
@@ -626,6 +791,7 @@ export default function Home() {
                         value={container.image}
                         onChange={(value) => updateContainer(container.id, { image: value })}
                         required
+                        error={validationErrors[`container-image-${container.id}`]}
                       />
 
                       <div className="container-actions">
@@ -670,6 +836,7 @@ export default function Home() {
                                 label="Name"
                                 value={port.name}
                                 onChange={(value) => updateContainerPort(container.id, port.id, { name: value })}
+                                error={validationErrors[`container-port-name-${container.id}-${port.id}`]}
                               />
                               <Field
                                 label="Container port"
@@ -677,6 +844,7 @@ export default function Home() {
                                 onChange={(value) => updateContainerPort(container.id, port.id, { port: value })}
                                 type="number"
                                 required
+                                error={validationErrors[`container-port-${container.id}-${port.id}`]}
                               />
                               <SelectField
                                 label="Protocol"
@@ -770,19 +938,26 @@ export default function Home() {
               <div className="repeat-list">
                 {servicePorts.map((port, index) => (
                   <div className="repeat-row service-port-row" key={port.id}>
-                    <Field label="Name" value={port.name} onChange={(value) => updateServicePort(port.id, { name: value })} />
+                    <Field
+                      label="Name"
+                      value={port.name}
+                      onChange={(value) => updateServicePort(port.id, { name: value })}
+                      error={validationErrors[`service-port-name-${port.id}`]}
+                    />
                     <Field
                       label="Service port"
                       value={port.port}
                       onChange={(value) => updateServicePort(port.id, { port: value })}
                       type="number"
                       required
+                      error={validationErrors[`service-port-${port.id}`]}
                     />
                     <Field
                       label="Target port"
                       value={port.targetPort}
                       onChange={(value) => updateServicePort(port.id, { targetPort: value })}
                       type="number"
+                      error={validationErrors[`service-target-port-${port.id}`]}
                     />
                     <SelectField
                       label="Protocol"
@@ -855,6 +1030,7 @@ export default function Home() {
                           value={volume.name}
                           onChange={(value) => updateVolume(volume.id, { name: value })}
                           required
+                          error={validationErrors[`volume-name-${volume.id}`]}
                         />
                         <SelectField
                           label="Volume type"
@@ -874,6 +1050,7 @@ export default function Home() {
                           onChange={(value) => updateVolume(volume.id, { source: value })}
                           placeholder={getVolumeSourcePlaceholder(volume.type)}
                           required={volume.type !== "emptyDir"}
+                          error={validationErrors[`volume-source-${volume.id}`]}
                         />
                       </div>
 
@@ -934,6 +1111,7 @@ export default function Home() {
                                   updateMountPoint(volume.id, mountPoint.id, { mountPath: value })
                                 }
                                 required
+                                error={validationErrors[`mount-path-${volume.id}-${mountPoint.id}`]}
                               />
                               <button
                                 type="button"
@@ -990,6 +1168,7 @@ export default function Home() {
                       value={serviceAccount}
                       onChange={setServiceAccount}
                       hint="Must exist in the selected namespace."
+                      error={validationErrors["service-account"]}
                     />
                   </div>
                 </details>
@@ -1023,14 +1202,19 @@ export default function Home() {
               {name || kind.toLowerCase()}.yaml
             </div>
             <div className="yaml-actions">
-              <button type="button" onClick={downloadManifest}>Download</button>
-              <button type="button" className="copy-button" onClick={copyManifest}>
+              <button type="button" onClick={downloadManifest} disabled={!isManifestValid}>Download</button>
+              <button type="button" className="copy-button" onClick={copyManifest} disabled={!isManifestValid}>
                 {copied ? "Copied!" : "Copy YAML"}
               </button>
             </div>
           </div>
           <div className="editor-meta">
-            <div><span className="valid-dot" />Schema valid</div>
+            <div className={isManifestValid ? "" : "invalid-state"}>
+              <span className={isManifestValid ? "valid-dot" : "invalid-dot"} />
+              {isManifestValid
+                ? "Kubernetes validation passed"
+                : `${validationErrorCount} validation ${validationErrorCount === 1 ? "error" : "errors"}`}
+            </div>
             <span>{apiVersion} · Kubernetes v{version}</span>
           </div>
           <div className="code-editor" aria-label="Generated Kubernetes YAML">
@@ -1043,7 +1227,9 @@ export default function Home() {
             <span>YAML</span>
             <span>{manifestLines.length - 1} lines</span>
             <span>Spaces: 2</span>
-            <span className="footer-ready"><i />Ready to apply</span>
+            <span className={isManifestValid ? "footer-ready" : "footer-invalid"}>
+              <i />{isManifestValid ? "Ready to apply" : "Fix validation errors"}
+            </span>
           </div>
         </aside>
       </section>
