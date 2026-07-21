@@ -960,6 +960,11 @@ summary:focus-visible {
   justify-self: start;
 }
 
+.storage-add-action {
+  justify-self: start;
+  margin-left: 50px;
+}
+
 .security-item {
   display: grid;
   gap: 12px;
@@ -1358,6 +1363,10 @@ summary:focus-visible {
   .security-content {
     padding-left: 0;
     padding-right: 0;
+  }
+
+  .storage-add-action {
+    margin-left: 0;
   }
 
   .mount-points-heading {

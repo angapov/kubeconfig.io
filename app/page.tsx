@@ -1861,35 +1861,36 @@ export default function Home() {
 
             {hasPodSpec && (
               <section className="form-section">
-                <div className="section-title with-action">
+                <div className="section-title">
                   <span className="section-number">03</span>
                   <div><h3>Storage</h3><p>Attach volumes to containers.</p></div>
-                  <button
-                    className="text-action"
-                    type="button"
-                    onClick={() =>
-                      setVolumes((current) => [
-                        ...current,
-                        {
-                          id: Date.now(),
-                          name: current.length === 0 ? "data" : "",
-                          type: "persistentVolumeClaim",
-                          source: "",
-                          readOnly: false,
-                          mountPoints: [
-                            {
-                              id: Date.now() + 1,
-                              containerId: containers[0]?.id ?? 0,
-                              mountPath: "/mnt",
-                            },
-                          ],
-                        },
-                      ])
-                    }
-                  >
-                    <span aria-hidden="true">＋</span>Add volume
-                  </button>
                 </div>
+
+                <button
+                  className="text-action storage-add-action"
+                  type="button"
+                  onClick={() =>
+                    setVolumes((current) => [
+                      ...current,
+                      {
+                        id: Date.now(),
+                        name: current.length === 0 ? "data" : "",
+                        type: "persistentVolumeClaim",
+                        source: "",
+                        readOnly: false,
+                        mountPoints: [
+                          {
+                            id: Date.now() + 1,
+                            containerId: containers[0]?.id ?? 0,
+                            mountPath: "/mnt",
+                          },
+                        ],
+                      },
+                    ])
+                  }
+                >
+                  <span aria-hidden="true">＋</span>Add volume
+                </button>
 
                 <div className="repeat-list">
                   {volumes.map((volume, index) => (
