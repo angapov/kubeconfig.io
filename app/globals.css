@@ -126,6 +126,74 @@ summary:focus-visible {
   gap: 8px;
 }
 
+.platform-picker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 8px 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface-soft);
+}
+
+.platform-picker-label {
+  margin-right: 4px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: var(--blue-dark);
+  background: var(--blue-soft);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.platform-option {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 650;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.platform-option:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface);
+}
+
+.platform-option.is-active {
+  border-color: var(--line-strong);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
+}
+
+.platform-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.platform-icon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  fill: currentColor;
+}
+
+.platform-option:first-of-type .platform-icon {
+  color: #326ce5;
+}
+
+.platform-option:last-of-type .platform-icon {
+  color: #ee0000;
+}
+
 .version-picker {
   gap: 10px;
   padding: 7px 8px 7px 12px;
@@ -152,10 +220,6 @@ summary:focus-visible {
   color: var(--ink);
   background: var(--surface);
   font-weight: 650;
-}
-
-.platform-controls .version-picker:first-child select {
-  min-width: 118px;
 }
 
 .schema-chip {
@@ -1211,6 +1275,15 @@ summary:focus-visible {
     width: 100%;
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .platform-picker {
+    justify-content: space-between;
+  }
+
+  .platform-option {
+    flex: 1;
+    justify-content: center;
   }
 
   .version-picker {
