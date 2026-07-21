@@ -243,9 +243,9 @@ export default function Home() {
       id: 1,
       name: "data",
       type: "persistentVolumeClaim",
-      source: "checkout-data-pvc",
+      source: "",
       readOnly: false,
-      mountPoints: [{ id: 1, containerId: 1, mountPath: "/var/lib/checkout" }],
+      mountPoints: [{ id: 1, containerId: 1, mountPath: "/mnt" }],
     },
   ]);
   const [copied, setCopied] = useState(false);
@@ -307,7 +307,7 @@ export default function Home() {
             .filter((mountPoint) => mountPoint.containerId === container.id)
             .map((mountPoint) => ({
               name: volume.name || "volume",
-              mountPath: mountPoint.mountPath || "/data",
+              mountPath: mountPoint.mountPath || "/mnt",
               readOnly: volume.readOnly || undefined,
             })),
         ),
@@ -842,14 +842,14 @@ export default function Home() {
                         {
                           id: Date.now(),
                           name: "",
-                          type: "emptyDir",
+                          type: "persistentVolumeClaim",
                           source: "",
                           readOnly: false,
                           mountPoints: [
                             {
                               id: Date.now() + 1,
                               containerId: containers[0]?.id ?? 0,
-                              mountPath: "/data",
+                              mountPath: "/mnt",
                             },
                           ],
                         },
@@ -882,7 +882,7 @@ export default function Home() {
                             { value: "emptyDir", label: "emptyDir" },
                             { value: "configMap", label: "ConfigMap" },
                             { value: "secret", label: "Secret" },
-                            { value: "persistentVolumeClaim", label: "PersistentVolumeClaim" },
+                            { value: "persistentVolumeClaim", label: "PVC" },
                           ]}
                         />
                         <Field
@@ -916,7 +916,7 @@ export default function Home() {
                                   {
                                     id: Date.now(),
                                     containerId: nextContainer?.id ?? 0,
-                                    mountPath: "/data",
+                                    mountPath: "/mnt",
                                   },
                                 ],
                               });
@@ -975,7 +975,7 @@ export default function Home() {
                           checked={volume.readOnly}
                           onChange={(event) => updateVolume(volume.id, { readOnly: event.target.checked })}
                         />
-                        Mount as read-only
+                        Read-only
                       </label>
                     </div>
                   ))}
