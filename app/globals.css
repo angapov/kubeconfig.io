@@ -512,12 +512,16 @@ summary:focus-visible {
 .label-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr)) 34px;
-  align-items: end;
+  align-items: start;
   gap: 12px;
 }
 
 .label-row .field {
   margin-bottom: 0;
+}
+
+.label-row > .remove-button {
+  margin-top: 20px;
 }
 
 .section-title {
