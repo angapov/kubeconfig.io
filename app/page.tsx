@@ -27,14 +27,19 @@ type ContainerField = {
   memoryLimit: string;
 };
 
+type MountPointField = {
+  id: number;
+  containerId: number;
+  mountPath: string;
+};
+
 type VolumeField = {
   id: number;
   name: string;
   type: VolumeType;
   source: string;
-  mountPath: string;
   readOnly: boolean;
-  containerIds: number[];
+  mountPoints: MountPointField[];
 };
 
 type YamlValue = string | number | boolean | YamlObject | YamlValue[];
@@ -188,51 +193,6 @@ function SelectField({
   );
 }
 
-function ContainerMultiSelect({
-  containers,
-  selectedIds,
-  onChange,
-}: {
-  containers: ContainerField[];
-  selectedIds: number[];
-  onChange: (ids: number[]) => void;
-}) {
-  const selectedNames = containers
-    .filter((container) => selectedIds.includes(container.id))
-    .map((container, index) => container.name || `Container ${index + 1}`);
-
-  return (
-    <div className="field multi-select-field">
-      <span className="field-label">Attach to containers</span>
-      <details className="multi-select">
-        <summary>
-          {selectedNames.length > 0
-            ? `${selectedNames.length} selected · ${selectedNames.join(", ")}`
-            : "Select containers"}
-        </summary>
-        <div className="multi-select-menu">
-          {containers.map((container, index) => (
-            <label className="check-field" key={container.id}>
-              <input
-                type="checkbox"
-                checked={selectedIds.includes(container.id)}
-                onChange={(event) =>
-                  onChange(
-                    event.target.checked
-                      ? [...selectedIds, container.id]
-                      : selectedIds.filter((id) => id !== container.id),
-                  )
-                }
-              />
-              {container.name || `Container ${index + 1}`}
-            </label>
-          ))}
-        </div>
-      </details>
-    </div>
-  );
-}
-
 export default function Home() {
   const [version, setVersion] = useState("1.35");
   const [kind, setKind] = useState<ResourceKind>("Deployment");
@@ -266,9 +226,8 @@ export default function Home() {
       name: "checkout-data",
       type: "persistentVolumeClaim",
       source: "checkout-data-pvc",
-      mountPath: "/var/lib/checkout",
       readOnly: false,
-      containerIds: [1],
+      mountPoints: [{ id: 1, containerId: 1, mountPath: "/var/lib/checkout" }],
     },
   ]);
   const [copied, setCopied] = useState(false);
@@ -323,12 +282,15 @@ export default function Home() {
           }
         : undefined,
       volumeMounts: volumes
-        .filter((volume) => volume.containerIds.includes(container.id))
-        .map((volume) => ({
-          name: volume.name || "volume",
-          mountPath: volume.mountPath || "/data",
-          readOnly: volume.readOnly || undefined,
-        })),
+        .flatMap((volume) =>
+          volume.mountPoints
+            .filter((mountPoint) => mountPoint.containerId === container.id)
+            .map((mountPoint) => ({
+              name: volume.name || "volume",
+              mountPath: mountPoint.mountPath || "/data",
+              readOnly: volume.readOnly || undefined,
+            })),
+        ),
     }));
 
     let resource: YamlObject;
@@ -428,7 +390,9 @@ export default function Home() {
     setVolumes((current) =>
       current.map((volume) => ({
         ...volume,
-        containerIds: volume.containerIds.filter((id) => id !== containerId),
+        mountPoints: volume.mountPoints.filter(
+          (mountPoint) => mountPoint.containerId !== containerId,
+        ),
       })),
     );
   }
@@ -436,6 +400,25 @@ export default function Home() {
   function updateVolume(id: number, patch: Partial<VolumeField>) {
     setVolumes((current) =>
       current.map((volume) => (volume.id === id ? { ...volume, ...patch } : volume)),
+    );
+  }
+
+  function updateMountPoint(
+    volumeId: number,
+    mountPointId: number,
+    patch: Partial<MountPointField>,
+  ) {
+    setVolumes((current) =>
+      current.map((volume) =>
+        volume.id === volumeId
+          ? {
+              ...volume,
+              mountPoints: volume.mountPoints.map((mountPoint) =>
+                mountPoint.id === mountPointId ? { ...mountPoint, ...patch } : mountPoint,
+              ),
+            }
+          : volume,
+      ),
     );
   }
 
@@ -655,54 +638,52 @@ export default function Home() {
                         </button>
                       </div>
 
+                      {container.ports.length > 0 && (
                       <div className="container-subsection">
                         <div className="container-subsection-title">
                           <strong>Container ports</strong>
-                          <span>{container.ports.length === 0 ? "None exposed" : `${container.ports.length} configured`}</span>
+                          <span>{container.ports.length} configured</span>
                         </div>
-                        {container.ports.length === 0 ? (
-                          <p className="empty-state">No container ports are exposed by default.</p>
-                        ) : (
-                          <div className="repeat-list">
-                            {container.ports.map((port, portIndex) => (
-                              <div className="repeat-row container-port-row" key={port.id}>
-                                <div className="repeat-index">{String(portIndex + 1).padStart(2, "0")}</div>
-                                <Field
-                                  label="Name"
-                                  value={port.name}
-                                  onChange={(value) => updateContainerPort(container.id, port.id, { name: value })}
-                                />
-                                <Field
-                                  label="Container port"
-                                  value={port.port}
-                                  onChange={(value) => updateContainerPort(container.id, port.id, { port: value })}
-                                  type="number"
-                                />
-                                <SelectField
-                                  label="Protocol"
-                                  value={port.protocol}
-                                  onChange={(value) =>
-                                    updateContainerPort(container.id, port.id, { protocol: value as Protocol })
-                                  }
-                                  options={["TCP", "UDP", "SCTP"].map((item) => ({ value: item, label: item }))}
-                                />
-                                <button
-                                  type="button"
-                                  className="remove-button"
-                                  aria-label={`Remove container port ${portIndex + 1}`}
-                                  onClick={() =>
-                                    updateContainer(container.id, {
-                                      ports: container.ports.filter((item) => item.id !== port.id),
-                                    })
-                                  }
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                        <div className="repeat-list">
+                          {container.ports.map((port, portIndex) => (
+                            <div className="repeat-row container-port-row" key={port.id}>
+                              <div className="repeat-index">{String(portIndex + 1).padStart(2, "0")}</div>
+                              <Field
+                                label="Name"
+                                value={port.name}
+                                onChange={(value) => updateContainerPort(container.id, port.id, { name: value })}
+                              />
+                              <Field
+                                label="Container port"
+                                value={port.port}
+                                onChange={(value) => updateContainerPort(container.id, port.id, { port: value })}
+                                type="number"
+                              />
+                              <SelectField
+                                label="Protocol"
+                                value={port.protocol}
+                                onChange={(value) =>
+                                  updateContainerPort(container.id, port.id, { protocol: value as Protocol })
+                                }
+                                options={["TCP", "UDP", "SCTP"].map((item) => ({ value: item, label: item }))}
+                              />
+                              <button
+                                type="button"
+                                className="remove-button"
+                                aria-label={`Remove container port ${portIndex + 1}`}
+                                onClick={() =>
+                                  updateContainer(container.id, {
+                                    ports: container.ports.filter((item) => item.id !== port.id),
+                                  })
+                                }
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
+                      )}
 
                       {container.resourcesEnabled && (
                         <div className="container-subsection">
@@ -742,12 +723,29 @@ export default function Home() {
                   ))}
                 </div>
 
-                <Field
-                  label="Service account"
-                  value={serviceAccount}
-                  onChange={setServiceAccount}
-                  hint="Must exist in the selected namespace."
-                />
+              </section>
+            )}
+
+            {kind !== "Service" && (
+              <section className="form-section collapsible-form-section">
+                <details className="security-section">
+                  <summary>
+                    <span className="section-number">03</span>
+                    <div>
+                      <h3>Security</h3>
+                      <p>Configure pod-level identity and security settings.</p>
+                    </div>
+                    <span className="disclosure-icon" aria-hidden="true">⌄</span>
+                  </summary>
+                  <div className="security-content">
+                    <Field
+                      label="Service account name"
+                      value={serviceAccount}
+                      onChange={setServiceAccount}
+                      hint="Must exist in the selected namespace."
+                    />
+                  </div>
+                </details>
               </section>
             )}
 
@@ -820,7 +818,7 @@ export default function Home() {
             {kind !== "Service" && (
               <section className="form-section">
                 <div className="section-title with-action">
-                  <span className="section-number">03</span>
+                  <span className="section-number">04</span>
                   <div><h3>Volumes</h3><p>Attach storage and configuration to selected containers.</p></div>
                   <button
                     className="text-action"
@@ -833,9 +831,14 @@ export default function Home() {
                           name: `volume-${current.length + 1}`,
                           type: "emptyDir",
                           source: "",
-                          mountPath: "/data",
                           readOnly: false,
-                          containerIds: [],
+                          mountPoints: [
+                            {
+                              id: Date.now() + 1,
+                              containerId: containers[0]?.id ?? 0,
+                              mountPath: "/data",
+                            },
+                          ],
                         },
                       ])
                     }
@@ -875,17 +878,87 @@ export default function Home() {
                           onChange={(value) => updateVolume(volume.id, { source: value })}
                           placeholder={volume.type === "emptyDir" ? "1Gi (optional)" : "Existing object name"}
                         />
-                        <Field
-                          label="Mount path inside container"
-                          value={volume.mountPath}
-                          onChange={(value) => updateVolume(volume.id, { mountPath: value })}
-                        />
-                        <ContainerMultiSelect
-                          containers={containers}
-                          selectedIds={volume.containerIds}
-                          onChange={(containerIds) => updateVolume(volume.id, { containerIds })}
-                        />
                       </div>
+
+                      <div className="mount-points-section">
+                        <div className="mount-points-heading">
+                          <div>
+                            <strong>Mount points</strong>
+                            <span>Choose where this volume is mounted in each container.</span>
+                          </div>
+                          <button
+                            className="text-action"
+                            type="button"
+                            onClick={() => {
+                              const nextContainer =
+                                containers.find(
+                                  (container) =>
+                                    !volume.mountPoints.some(
+                                      (mountPoint) => mountPoint.containerId === container.id,
+                                    ),
+                                ) ?? containers[0];
+                              updateVolume(volume.id, {
+                                mountPoints: [
+                                  ...volume.mountPoints,
+                                  {
+                                    id: Date.now(),
+                                    containerId: nextContainer?.id ?? 0,
+                                    mountPath: "/data",
+                                  },
+                                ],
+                              });
+                            }}
+                          >
+                            <span aria-hidden="true">＋</span>Add mount point
+                          </button>
+                        </div>
+
+                        <div className="mount-point-list">
+                          {volume.mountPoints.map((mountPoint, mountPointIndex) => (
+                            <div className="mount-point-row" key={mountPoint.id}>
+                              <div className="repeat-index">
+                                {String(mountPointIndex + 1).padStart(2, "0")}
+                              </div>
+                              <SelectField
+                                label="Container name"
+                                value={String(mountPoint.containerId)}
+                                onChange={(value) =>
+                                  updateMountPoint(volume.id, mountPoint.id, {
+                                    containerId: Number(value),
+                                  })
+                                }
+                                options={containers.map((container, containerIndex) => ({
+                                  value: String(container.id),
+                                  label: container.name || `Container ${containerIndex + 1}`,
+                                }))}
+                              />
+                              <Field
+                                label="Mount path inside container"
+                                value={mountPoint.mountPath}
+                                onChange={(value) =>
+                                  updateMountPoint(volume.id, mountPoint.id, { mountPath: value })
+                                }
+                              />
+                              <button
+                                type="button"
+                                className="remove-button"
+                                aria-label={`Remove mount point ${mountPointIndex + 1}`}
+                                onClick={() =>
+                                  updateVolume(volume.id, {
+                                    mountPoints: volume.mountPoints.filter(
+                                      (item) => item.id !== mountPoint.id,
+                                    ),
+                                  })
+                                }
+                                disabled={volume.mountPoints.length === 1}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
                       <label className="check-field">
                         <input
                           type="checkbox"

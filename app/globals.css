@@ -55,7 +55,8 @@ select {
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
-a:focus-visible {
+a:focus-visible,
+summary:focus-visible {
   outline: 3px solid rgba(21, 94, 239, 0.3);
   outline-offset: 2px;
 }
@@ -320,6 +321,7 @@ a:focus-visible {
 
 .field-grid > .field,
 .repeat-row > .field,
+.mount-point-row > .field,
 .resource-grid > .field {
   margin-bottom: 0;
 }
@@ -452,16 +454,6 @@ a:focus-visible {
   font-size: 10px;
 }
 
-.empty-state {
-  margin: 0;
-  padding: 12px 14px;
-  border: 1px dashed #c6d4e7;
-  border-radius: 9px;
-  color: var(--muted);
-  background: rgba(255, 255, 255, 0.65);
-  font-size: 11px;
-}
-
 .text-action {
   display: inline-flex;
   align-items: center;
@@ -542,57 +534,106 @@ a:focus-visible {
   accent-color: var(--blue);
 }
 
-.multi-select-field {
-  grid-column: 1 / -1;
+.collapsible-form-section {
+  padding: 0;
 }
 
-.multi-select {
-  position: relative;
-}
-
-.multi-select summary {
-  min-height: 42px;
-  padding: 0 36px 0 12px;
+.security-section summary {
+  min-height: 89px;
+  padding: 20px 0;
   display: flex;
   align-items: center;
-  overflow: hidden;
-  border: 1px solid var(--line-strong);
-  border-radius: 9px;
-  color: var(--ink);
-  background: var(--surface);
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.security-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.security-section summary > div {
+  flex: 1;
+}
+
+.security-section summary h3,
+.security-section summary p {
+  margin: 0;
+}
+
+.security-section summary h3 {
+  font-size: 15px;
+  letter-spacing: -0.015em;
+}
+
+.security-section summary p {
+  margin-top: 3px;
+  color: var(--muted);
   font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  list-style-position: inside;
 }
 
-.multi-select summary:hover {
-  border-color: #9db4d4;
+.disclosure-icon {
+  color: var(--muted);
+  font-size: 18px;
+  transition: transform 150ms ease;
 }
 
-.multi-select-menu {
-  position: absolute;
-  z-index: 10;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
-  padding: 10px;
+.security-section[open] .disclosure-icon {
+  transform: rotate(180deg);
+}
+
+.security-content {
+  padding: 0 50px 22px;
+}
+
+.security-content .field {
+  margin-bottom: 0;
+}
+
+.mount-points-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.mount-points-heading {
+  margin-bottom: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.mount-points-heading strong,
+.mount-points-heading span {
+  display: block;
+}
+
+.mount-points-heading strong {
+  color: #344054;
+  font-size: 12px;
+}
+
+.mount-points-heading > div > span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.mount-point-list {
   display: grid;
-  gap: 5px;
-  border: 1px solid var(--line-strong);
+  gap: 9px;
+}
+
+.mount-point-row {
+  display: grid;
+  grid-template-columns: 36px minmax(140px, 0.9fr) minmax(180px, 1.25fr) 34px;
+  align-items: end;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: var(--surface);
-  box-shadow: 0 12px 30px rgba(35, 55, 80, 0.16);
-}
-
-.multi-select-menu .check-field {
-  width: 100%;
-  padding: 8px;
-  border-radius: 7px;
-}
-
-.multi-select-menu .check-field:hover {
-  background: var(--blue-soft);
+  background: #fff;
 }
 
 .schema-note {
@@ -877,6 +918,37 @@ a:focus-visible {
   .section-title.with-action {
     align-items: flex-start;
     flex-wrap: wrap;
+  }
+
+  .security-content {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .mount-points-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .mount-points-heading .text-action {
+    width: 100%;
+  }
+
+  .mount-point-row {
+    grid-template-columns: 1fr 34px;
+  }
+
+  .mount-point-row .repeat-index {
+    display: none;
+  }
+
+  .mount-point-row .field {
+    grid-column: 1;
+  }
+
+  .mount-point-row .remove-button {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .text-action {
