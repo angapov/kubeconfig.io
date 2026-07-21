@@ -147,34 +147,80 @@ summary:focus-visible {
   white-space: nowrap;
 }
 
-.platform-option {
+.platform-dropdown {
+  position: relative;
+}
+
+.platform-dropdown-trigger {
   min-height: 34px;
+  min-width: 132px;
   display: inline-flex;
   align-items: center;
   gap: 7px;
   padding: 7px 10px;
-  border: 1px solid transparent;
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
-  color: var(--muted);
-  background: transparent;
+  color: var(--ink);
+  background: var(--surface);
   font-size: 12px;
   font-weight: 650;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
   transition: border-color 140ms ease, background 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
 
-.platform-option:hover:not(:disabled) {
-  color: var(--ink);
-  background: var(--surface);
+.platform-dropdown-trigger:hover {
+  border-color: #aebfd7;
 }
 
-.platform-option.is-active {
-  border-color: var(--line-strong);
-  color: var(--ink);
-  background: var(--surface);
-  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08);
+.dropdown-chevron {
+  width: 7px;
+  height: 7px;
+  margin: -3px 1px 0 auto;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 140ms ease;
 }
 
-.platform-option:disabled {
+.platform-dropdown-trigger[aria-expanded="true"] .dropdown-chevron {
+  margin-top: 3px;
+  transform: rotate(225deg);
+}
+
+.platform-dropdown-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 7px);
+  right: 0;
+  min-width: 174px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 12px 28px rgba(16, 24, 40, 0.16);
+}
+
+.platform-dropdown-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--ink);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 650;
+  text-align: left;
+}
+
+.platform-dropdown-option:hover:not(:disabled),
+.platform-dropdown-option.is-selected {
+  background: var(--blue-soft);
+}
+
+.platform-dropdown-option:disabled {
   cursor: not-allowed;
   opacity: 0.42;
 }
@@ -186,12 +232,18 @@ summary:focus-visible {
   fill: currentColor;
 }
 
-.platform-option:first-of-type .platform-icon {
+.platform-kubernetes .platform-icon {
   color: #326ce5;
 }
 
-.platform-option:last-of-type .platform-icon {
+.platform-openshift .platform-icon {
   color: #ee0000;
+}
+
+.platform-selection-check {
+  margin-left: auto;
+  color: var(--blue);
+  font-size: 13px;
 }
 
 .version-picker {
@@ -1281,9 +1333,9 @@ summary:focus-visible {
     justify-content: space-between;
   }
 
-  .platform-option {
-    flex: 1;
-    justify-content: center;
+  .platform-dropdown,
+  .platform-dropdown-trigger {
+    width: 100%;
   }
 
   .version-picker {
