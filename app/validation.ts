@@ -1,4 +1,12 @@
-type ResourceKind = "Deployment" | "Pod" | "Service" | "Job" | "CronJob" | "Route";
+type ResourceKind =
+  | "Deployment"
+  | "Pod"
+  | "Service"
+  | "Job"
+  | "CronJob"
+  | "Route"
+  | "PersistentVolumeClaim"
+  | "PersistentVolume";
 
 type PortInput = {
   id: number;
@@ -40,6 +48,17 @@ type ValidationInput = {
   routePath: string;
   routeServiceName: string;
   routeTargetPort: string;
+  storageAccessModes: string[];
+  storageClassName: string;
+  storageRequest: string;
+  storageCapacity: string;
+  pvcVolumeName: string;
+  pvSourceType: string;
+  pvHostPath: string;
+  pvNfsServer: string;
+  pvNfsPath: string;
+  pvCsiDriver: string;
+  pvCsiVolumeHandle: string;
   securityExpanded: boolean;
   serviceAccount: string;
   servicePorts: PortInput[];
@@ -51,6 +70,7 @@ const DNS_SUBDOMAIN_PATTERN = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 const DNS_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const LABEL_NAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?$/;
 const PORT_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+const STORAGE_QUANTITY_PATTERN = /^\+?(?:\d+(?:\.\d+)?|\.\d+)(?:(?:[eE][+-]?\d+)|(?:[EPTGMk]i?)|m)?$/;
 
 function validateDnsName(value: string, label: string, labelOnly = false) {
   const trimmed = value.trim();
@@ -76,6 +96,15 @@ function validateNonNegativeInteger(value: string, label: string) {
   const parsed = Number(value);
   if (!value.trim() || !Number.isInteger(parsed) || parsed < 0) {
     return `${label} must be a non-negative integer.`;
+  }
+  return undefined;
+}
+
+function validateStorageQuantity(value: string, label: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return `${label} is required.`;
+  if (!STORAGE_QUANTITY_PATTERN.test(trimmed) || Number.parseFloat(trimmed) <= 0) {
+    return `${label} must be a positive Kubernetes quantity such as 1Gi or 500Mi.`;
   }
   return undefined;
 }
@@ -128,7 +157,9 @@ export function validateManifestFields(input: ValidationInput) {
   if (input.kind === "CronJob" && input.name.length > 52) {
     errors.name = "CronJob name must be 52 characters or fewer.";
   }
-  add("namespace", validateDnsName(input.namespace, "Namespace", true));
+  if (input.kind !== "PersistentVolume") {
+    add("namespace", validateDnsName(input.namespace, "Namespace", true));
+  }
   add("labels", validateLabels(input.labels));
 
   if (input.kind === "Deployment") {
@@ -146,6 +177,57 @@ export function validateManifestFields(input: ValidationInput) {
 
   if (input.kind === "CronJob" && !input.schedule.trim()) {
     errors.schedule = "Schedule is required.";
+  }
+
+  if (input.kind === "PersistentVolumeClaim" || input.kind === "PersistentVolume") {
+    if (input.storageAccessModes.length === 0) {
+      errors.storageAccessModes = "Select at least one access mode.";
+    }
+    if (input.storageClassName.trim()) {
+      add(
+        "storageClassName",
+        validateDnsName(input.storageClassName, "Storage class name"),
+      );
+    }
+
+    if (input.kind === "PersistentVolumeClaim") {
+      add(
+        "storageRequest",
+        validateStorageQuantity(input.storageRequest, "Storage request"),
+      );
+      if (input.pvcVolumeName.trim()) {
+        add(
+          "pvcVolumeName",
+          validateDnsName(input.pvcVolumeName, "PersistentVolume name"),
+        );
+      }
+      return errors;
+    }
+
+    add(
+      "storageCapacity",
+      validateStorageQuantity(input.storageCapacity, "Storage capacity"),
+    );
+    if (input.pvSourceType === "hostPath") {
+      if (!input.pvHostPath.trim()) {
+        errors.pvHostPath = "Host path is required.";
+      } else if (!input.pvHostPath.startsWith("/")) {
+        errors.pvHostPath = "Host path must be absolute and start with /.";
+      }
+    } else if (input.pvSourceType === "nfs") {
+      if (!input.pvNfsServer.trim()) errors.pvNfsServer = "NFS server is required.";
+      if (!input.pvNfsPath.trim()) {
+        errors.pvNfsPath = "NFS export path is required.";
+      } else if (!input.pvNfsPath.startsWith("/")) {
+        errors.pvNfsPath = "NFS export path must start with /.";
+      }
+    } else if (input.pvSourceType === "csi") {
+      add("pvCsiDriver", validateDnsName(input.pvCsiDriver, "CSI driver"));
+      if (!input.pvCsiVolumeHandle.trim()) {
+        errors.pvCsiVolumeHandle = "Volume handle is required.";
+      }
+    }
+    return errors;
   }
 
   if (input.kind === "Route") {

@@ -4,9 +4,18 @@ import { useMemo, useRef, useState, type SetStateAction } from "react";
 import { validateManifestFields } from "./validation";
 
 type Platform = "Kubernetes" | "OpenShift";
-type ResourceKind = "Deployment" | "Pod" | "Service" | "Job" | "CronJob" | "Route";
+type ResourceKind =
+  | "Deployment"
+  | "Pod"
+  | "Service"
+  | "Job"
+  | "CronJob"
+  | "Route"
+  | "PersistentVolumeClaim"
+  | "PersistentVolume";
 type Protocol = "TCP" | "UDP" | "SCTP";
 type VolumeType = "emptyDir" | "configMap" | "secret" | "persistentVolumeClaim";
+type PvSourceType = "hostPath" | "nfs" | "csi";
 
 const RESOURCE_KIND_ABBREVIATIONS: Record<ResourceKind, string> = {
   CronJob: "CJ",
@@ -15,6 +24,8 @@ const RESOURCE_KIND_ABBREVIATIONS: Record<ResourceKind, string> = {
   Job: "J",
   Service: "S",
   Route: "R",
+  PersistentVolumeClaim: "PVC",
+  PersistentVolume: "PV",
 };
 
 type PortField = {
@@ -76,6 +87,22 @@ type ResourceState = {
   routeTlsEnabled: boolean;
   routeTlsTermination: string;
   routeInsecurePolicy: string;
+  storageAccessModes: string[];
+  storageVolumeMode: string;
+  storageClassName: string;
+  storageRequest: string;
+  storageCapacity: string;
+  pvcVolumeName: string;
+  pvReclaimPolicy: string;
+  pvSourceType: PvSourceType;
+  pvHostPath: string;
+  pvHostPathType: string;
+  pvNfsServer: string;
+  pvNfsPath: string;
+  pvNfsReadOnly: boolean;
+  pvCsiDriver: string;
+  pvCsiVolumeHandle: string;
+  pvCsiFsType: string;
   containers: ContainerField[];
   servicePorts: PortField[];
   volumes: VolumeField[];
@@ -213,6 +240,22 @@ function createDefaultResource(id: number): ResourceState {
     routeTlsEnabled: false,
     routeTlsTermination: "edge",
     routeInsecurePolicy: "None",
+    storageAccessModes: ["ReadWriteOnce"],
+    storageVolumeMode: "Filesystem",
+    storageClassName: "",
+    storageRequest: "1Gi",
+    storageCapacity: "10Gi",
+    pvcVolumeName: "",
+    pvReclaimPolicy: "Retain",
+    pvSourceType: "hostPath",
+    pvHostPath: "/mnt/data",
+    pvHostPathType: "DirectoryOrCreate",
+    pvNfsServer: "",
+    pvNfsPath: "/exports/data",
+    pvNfsReadOnly: false,
+    pvCsiDriver: "",
+    pvCsiVolumeHandle: "",
+    pvCsiFsType: "ext4",
     containers: [
       {
         id: 1,
@@ -265,13 +308,29 @@ function buildResourceManifest(resourceState: ResourceState) {
     serviceAccount,
     servicePorts,
     serviceType,
+    storageAccessModes,
+    storageCapacity,
+    storageClassName,
+    storageRequest,
+    storageVolumeMode,
     parallelism,
+    pvcVolumeName,
+    pvCsiDriver,
+    pvCsiFsType,
+    pvCsiVolumeHandle,
+    pvHostPath,
+    pvHostPathType,
+    pvNfsPath,
+    pvNfsReadOnly,
+    pvNfsServer,
+    pvReclaimPolicy,
+    pvSourceType,
     volumes,
   } = resourceState;
   const parsedLabels = parseLabels(labels, name);
   const metadata: YamlObject = {
     name: name || "untitled",
-    namespace: namespace || "default",
+    namespace: kind === "PersistentVolume" ? undefined : namespace || "default",
     labels: parsedLabels,
   };
 
@@ -331,7 +390,67 @@ function buildResourceManifest(resourceState: ResourceState) {
 
   let resource: YamlObject;
 
-  if (kind === "Route") {
+  if (kind === "PersistentVolumeClaim") {
+    resource = {
+      apiVersion: "v1",
+      kind: "PersistentVolumeClaim",
+      metadata,
+      spec: {
+        accessModes: storageAccessModes,
+        volumeMode: storageVolumeMode,
+        resources: {
+          requests: {
+            storage: storageRequest.trim(),
+          },
+        },
+        storageClassName: storageClassName.trim() || undefined,
+        volumeName: pvcVolumeName.trim() || undefined,
+      },
+    };
+  } else if (kind === "PersistentVolume") {
+    const source: YamlObject =
+      pvSourceType === "nfs"
+        ? {
+            nfs: {
+              server: pvNfsServer.trim(),
+              path: pvNfsPath.trim(),
+              readOnly: pvNfsReadOnly || undefined,
+            },
+          }
+        : pvSourceType === "csi"
+          ? {
+              csi: {
+                driver: pvCsiDriver.trim(),
+                volumeHandle: pvCsiVolumeHandle.trim(),
+                fsType:
+                  storageVolumeMode === "Filesystem"
+                    ? pvCsiFsType.trim() || undefined
+                    : undefined,
+              },
+            }
+          : {
+              hostPath: {
+                path: pvHostPath.trim(),
+                type: pvHostPathType,
+              },
+            };
+
+    resource = {
+      apiVersion: "v1",
+      kind: "PersistentVolume",
+      metadata,
+      spec: {
+        capacity: {
+          storage: storageCapacity.trim(),
+        },
+        accessModes: storageAccessModes,
+        volumeMode: storageVolumeMode,
+        persistentVolumeReclaimPolicy: pvReclaimPolicy,
+        storageClassName: storageClassName.trim() || undefined,
+        ...source,
+      },
+    };
+  } else if (kind === "Route") {
     const trimmedTargetPort = routeTargetPort.trim();
     resource = {
       apiVersion: "route.openshift.io/v1",
@@ -543,7 +662,23 @@ export default function Home() {
     serviceAccount,
     servicePorts,
     serviceType,
+    storageAccessModes,
+    storageCapacity,
+    storageClassName,
+    storageRequest,
+    storageVolumeMode,
     parallelism,
+    pvcVolumeName,
+    pvCsiDriver,
+    pvCsiFsType,
+    pvCsiVolumeHandle,
+    pvHostPath,
+    pvHostPathType,
+    pvNfsPath,
+    pvNfsReadOnly,
+    pvNfsServer,
+    pvReclaimPolicy,
+    pvSourceType,
     volumes,
   } = activeResource;
 
@@ -582,9 +717,47 @@ export default function Home() {
   const setRouteTargetPort = (value: SetStateAction<string>) => setResourceField("routeTargetPort", value);
   const setRouteTlsEnabled = (value: SetStateAction<boolean>) => setResourceField("routeTlsEnabled", value);
   const setRouteInsecurePolicy = (value: SetStateAction<string>) => setResourceField("routeInsecurePolicy", value);
+  const setStorageAccessModes = (value: SetStateAction<string[]>) => setResourceField("storageAccessModes", value);
+  const setStorageVolumeMode = (value: SetStateAction<string>) => setResourceField("storageVolumeMode", value);
+  const setStorageClassName = (value: SetStateAction<string>) => setResourceField("storageClassName", value);
+  const setStorageRequest = (value: SetStateAction<string>) => setResourceField("storageRequest", value);
+  const setStorageCapacity = (value: SetStateAction<string>) => setResourceField("storageCapacity", value);
+  const setPvcVolumeName = (value: SetStateAction<string>) => setResourceField("pvcVolumeName", value);
+  const setPvReclaimPolicy = (value: SetStateAction<string>) => setResourceField("pvReclaimPolicy", value);
+  const setPvHostPath = (value: SetStateAction<string>) => setResourceField("pvHostPath", value);
+  const setPvHostPathType = (value: SetStateAction<string>) => setResourceField("pvHostPathType", value);
+  const setPvNfsServer = (value: SetStateAction<string>) => setResourceField("pvNfsServer", value);
+  const setPvNfsPath = (value: SetStateAction<string>) => setResourceField("pvNfsPath", value);
+  const setPvNfsReadOnly = (value: SetStateAction<boolean>) => setResourceField("pvNfsReadOnly", value);
+  const setPvCsiDriver = (value: SetStateAction<string>) => setResourceField("pvCsiDriver", value);
+  const setPvCsiVolumeHandle = (value: SetStateAction<string>) => setResourceField("pvCsiVolumeHandle", value);
+  const setPvCsiFsType = (value: SetStateAction<string>) => setResourceField("pvCsiFsType", value);
   const setContainers = (value: SetStateAction<ContainerField[]>) => setResourceField("containers", value);
   const setServicePorts = (value: SetStateAction<PortField[]>) => setResourceField("servicePorts", value);
   const setVolumes = (value: SetStateAction<VolumeField[]>) => setResourceField("volumes", value);
+
+  function toggleStorageAccessMode(mode: string, checked: boolean) {
+    setStorageAccessModes((current) =>
+      checked
+        ? current.includes(mode) ? current : [...current, mode]
+        : current.filter((item) => item !== mode),
+    );
+  }
+
+  function changePvSourceType(nextSourceType: PvSourceType) {
+    setResources((current) =>
+      current.map((resource) =>
+        resource.id === activeResourceId
+          ? {
+              ...resource,
+              pvSourceType: nextSourceType,
+              storageVolumeMode:
+                nextSourceType === "nfs" ? "Filesystem" : resource.storageVolumeMode,
+            }
+          : resource,
+      ),
+    );
+  }
 
   function changeResourceKind(nextKind: ResourceKind) {
     if (nextKind === "Route") setPlatform("OpenShift");
@@ -751,6 +924,8 @@ export default function Home() {
           : "v1";
   const version = platform === "OpenShift" ? openShiftVersion : kubernetesVersion;
   const versionOptions = platform === "OpenShift" ? OPENSHIFT_VERSION_OPTIONS : KUBERNETES_VERSION_OPTIONS;
+  const isStorageResource = kind === "PersistentVolumeClaim" || kind === "PersistentVolume";
+  const hasPodSpec = kind !== "Service" && kind !== "Route" && !isStorageResource;
   const manifestFileName = resources.length > 1
     ? platform === "OpenShift" ? "openshift-resources.yaml" : "kubernetes-resources.yaml"
     : `${name || kind.toLowerCase()}.yaml`;
@@ -834,7 +1009,12 @@ export default function Home() {
                       title={`${resource.kind}: ${resource.name || `Resource ${index + 1}`}`}
                       onClick={() => setActiveResourceId(resource.id)}
                     >
-                      <b aria-hidden="true">{RESOURCE_KIND_ABBREVIATIONS[resource.kind]}</b>
+                      <b
+                        className={RESOURCE_KIND_ABBREVIATIONS[resource.kind].length > 1 ? "wide" : undefined}
+                        aria-hidden="true"
+                      >
+                        {RESOURCE_KIND_ABBREVIATIONS[resource.kind]}
+                      </b>
                       <span>{resource.name || `Resource ${index + 1}`}</span>
                       {tabErrorCount > 0 && <i title={`${tabErrorCount} validation errors`} />}
                     </button>
@@ -868,7 +1048,10 @@ export default function Home() {
             <section className="form-section">
               <div className="section-title">
                 <span className="section-number">01</span>
-                <div><h3>Workload</h3><p>Name and identify the Kubernetes object.</p></div>
+                <div>
+                  <h3>{isStorageResource ? "Storage resource" : "Workload"}</h3>
+                  <p>Name and identify the {platform} object.</p>
+                </div>
                 <code>{apiVersion}</code>
               </div>
               <div className="field-grid two-col">
@@ -883,11 +1066,15 @@ export default function Home() {
                     { value: "Job", label: "Job" },
                     { value: "CronJob", label: "CronJob" },
                     { value: "Service", label: "Service" },
+                    { value: "PersistentVolumeClaim", label: "PersistentVolumeClaim" },
+                    { value: "PersistentVolume", label: "PersistentVolume" },
                     ...(platform === "OpenShift" ? [{ value: "Route", label: "Route" }] : []),
                   ]}
                 />
                 <Field label="Name" value={name} onChange={setName} required error={validationErrors.name} />
-                <Field label="Namespace" value={namespace} onChange={setNamespace} error={validationErrors.namespace} />
+                {kind !== "PersistentVolume" && (
+                  <Field label="Namespace" value={namespace} onChange={setNamespace} error={validationErrors.namespace} />
+                )}
                 {kind === "Deployment" && (
                   <Field
                     label="Replicas"
@@ -970,10 +1157,222 @@ export default function Home() {
                 label="Labels"
                 value={labels}
                 onChange={setLabels}
-                hint="Comma-separated key=value pairs. Used as selectors for Deployments and Services."
+                hint={
+                  isStorageResource
+                    ? "Comma-separated key=value pairs for organizing and selecting storage resources."
+                    : "Comma-separated key=value pairs. Used as selectors for Deployments and Services."
+                }
                 error={validationErrors.labels}
               />
             </section>
+
+            {isStorageResource && (
+              <section className="form-section">
+                <div className="section-title">
+                  <span className="section-number">02</span>
+                  <div>
+                    <h3>Storage specification</h3>
+                    <p>
+                      {kind === "PersistentVolumeClaim"
+                        ? "Request storage with the required capacity and access modes."
+                        : "Define cluster storage capacity, lifecycle, and backing source."}
+                    </p>
+                  </div>
+                  <code>{kind === "PersistentVolumeClaim" ? "Namespaced" : "Cluster-scoped"}</code>
+                </div>
+
+                <div className="field-grid two-col">
+                  <Field
+                    label={kind === "PersistentVolumeClaim" ? "Storage request" : "Storage capacity"}
+                    value={kind === "PersistentVolumeClaim" ? storageRequest : storageCapacity}
+                    onChange={kind === "PersistentVolumeClaim" ? setStorageRequest : setStorageCapacity}
+                    placeholder={kind === "PersistentVolumeClaim" ? "1Gi" : "10Gi"}
+                    required
+                    error={
+                      kind === "PersistentVolumeClaim"
+                        ? validationErrors.storageRequest
+                        : validationErrors.storageCapacity
+                    }
+                  />
+                  <Field
+                    label="Storage class name"
+                    value={storageClassName}
+                    onChange={setStorageClassName}
+                    placeholder="standard"
+                    hint="Optional. Omit to use the cluster default for claims."
+                    error={validationErrors.storageClassName}
+                  />
+                  <SelectField
+                    label="Volume mode"
+                    value={storageVolumeMode}
+                    onChange={setStorageVolumeMode}
+                    required
+                    options={
+                      kind === "PersistentVolume" && pvSourceType === "nfs"
+                        ? [{ value: "Filesystem", label: "Filesystem" }]
+                        : [
+                            { value: "Filesystem", label: "Filesystem" },
+                            { value: "Block", label: "Block" },
+                          ]
+                    }
+                  />
+                  {kind === "PersistentVolumeClaim" ? (
+                    <Field
+                      label="PersistentVolume name"
+                      value={pvcVolumeName}
+                      onChange={setPvcVolumeName}
+                      placeholder="existing-pv"
+                      hint="Optional. Bind this claim to a specific PersistentVolume."
+                      error={validationErrors.pvcVolumeName}
+                    />
+                  ) : (
+                    <SelectField
+                      label="Reclaim policy"
+                      value={pvReclaimPolicy}
+                      onChange={setPvReclaimPolicy}
+                      required
+                      options={[
+                        { value: "Retain", label: "Retain" },
+                        { value: "Delete", label: "Delete" },
+                      ]}
+                    />
+                  )}
+                </div>
+
+                <fieldset className="access-modes-fieldset">
+                  <legend className="field-label">
+                    Access modes<span className="required"> *</span>
+                  </legend>
+                  <div className="access-mode-options">
+                    {[
+                      ["ReadWriteOnce", "ReadWriteOnce (RWO)"],
+                      ["ReadOnlyMany", "ReadOnlyMany (ROX)"],
+                      ["ReadWriteMany", "ReadWriteMany (RWX)"],
+                      ["ReadWriteOncePod", "ReadWriteOncePod (RWOP)"],
+                    ].map(([value, label]) => (
+                      <label className="check-field" key={value}>
+                        <input
+                          type="checkbox"
+                          checked={storageAccessModes.includes(value)}
+                          onChange={(event) => toggleStorageAccessMode(value, event.target.checked)}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                  {validationErrors.storageAccessModes && (
+                    <span className="field-error">{validationErrors.storageAccessModes}</span>
+                  )}
+                </fieldset>
+
+                {kind === "PersistentVolume" && (
+                  <div className="storage-source-section">
+                    <div className="container-subsection-title">
+                      <strong>Volume source</strong>
+                      <span>Select the system that provides the underlying storage.</span>
+                    </div>
+                    <SelectField
+                      label="Source type"
+                      value={pvSourceType}
+                      onChange={(value) => changePvSourceType(value as PvSourceType)}
+                      required
+                      options={[
+                        { value: "hostPath", label: "hostPath" },
+                        { value: "nfs", label: "NFS" },
+                        { value: "csi", label: "CSI" },
+                      ]}
+                    />
+
+                    {pvSourceType === "hostPath" && (
+                      <div className="field-grid two-col">
+                        <Field
+                          label="Host path"
+                          value={pvHostPath}
+                          onChange={setPvHostPath}
+                          placeholder="/mnt/data"
+                          required
+                          error={validationErrors.pvHostPath}
+                        />
+                        <SelectField
+                          label="Host path type"
+                          value={pvHostPathType}
+                          onChange={setPvHostPathType}
+                          options={[
+                            "DirectoryOrCreate",
+                            "Directory",
+                            "FileOrCreate",
+                            "File",
+                            "Socket",
+                            "CharDevice",
+                            "BlockDevice",
+                          ].map((item) => ({ value: item, label: item }))}
+                        />
+                      </div>
+                    )}
+
+                    {pvSourceType === "nfs" && (
+                      <>
+                        <div className="field-grid two-col">
+                          <Field
+                            label="NFS server"
+                            value={pvNfsServer}
+                            onChange={setPvNfsServer}
+                            placeholder="nfs.example.com"
+                            required
+                            error={validationErrors.pvNfsServer}
+                          />
+                          <Field
+                            label="NFS export path"
+                            value={pvNfsPath}
+                            onChange={setPvNfsPath}
+                            placeholder="/exports/data"
+                            required
+                            error={validationErrors.pvNfsPath}
+                          />
+                        </div>
+                        <label className="check-field">
+                          <input
+                            type="checkbox"
+                            checked={pvNfsReadOnly}
+                            onChange={(event) => setPvNfsReadOnly(event.target.checked)}
+                          />
+                          Read-only NFS source
+                        </label>
+                      </>
+                    )}
+
+                    {pvSourceType === "csi" && (
+                      <div className="field-grid two-col">
+                        <Field
+                          label="CSI driver"
+                          value={pvCsiDriver}
+                          onChange={setPvCsiDriver}
+                          placeholder="driver.example.com"
+                          required
+                          error={validationErrors.pvCsiDriver}
+                        />
+                        <Field
+                          label="Volume handle"
+                          value={pvCsiVolumeHandle}
+                          onChange={setPvCsiVolumeHandle}
+                          placeholder="volume-id"
+                          required
+                          error={validationErrors.pvCsiVolumeHandle}
+                        />
+                        {storageVolumeMode === "Filesystem" && (
+                          <Field
+                            label="Filesystem type"
+                            value={pvCsiFsType}
+                            onChange={setPvCsiFsType}
+                            placeholder="ext4"
+                          />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
 
             {kind === "Route" && (
               <section className="form-section">
@@ -1057,7 +1456,7 @@ export default function Home() {
               </section>
             )}
 
-            {kind !== "Service" && kind !== "Route" && (
+            {hasPodSpec && (
               <section className="form-section">
                 <div className="section-title with-action">
                   <span className="section-number">02</span>
@@ -1311,7 +1710,7 @@ export default function Home() {
             </section>
             )}
 
-            {kind !== "Service" && kind !== "Route" && (
+            {hasPodSpec && (
               <section className="form-section">
                 <div className="section-title with-action">
                   <span className="section-number">03</span>
@@ -1478,7 +1877,7 @@ export default function Home() {
               </section>
             )}
 
-            {kind !== "Service" && kind !== "Route" && (
+            {hasPodSpec && (
               <section className="form-section collapsible-form-section">
                 <details
                   className="security-section"
