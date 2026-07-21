@@ -25,6 +25,11 @@ type ContainerInput = {
   id: number;
   name: string;
   image: string;
+  resourcesEnabled: boolean;
+  cpuRequest: string;
+  memoryRequest: string;
+  cpuLimit: string;
+  memoryLimit: string;
   ports: PortInput[];
 };
 
@@ -77,6 +82,25 @@ const DNS_LABEL_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const LABEL_NAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9_.-]*[A-Za-z0-9])?$/;
 const PORT_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const STORAGE_QUANTITY_PATTERN = /^\+?(?:\d+(?:\.\d+)?|\.\d+)(?:(?:[eE][+-]?\d+)|(?:[EPTGMk]i?)|m)?$/;
+const CPU_QUANTITY_PATTERN = /^\+?(?:\d+(?:\.\d+)?|\.\d+)(?:(?:[eE][+-]?\d+)|m)?$/;
+const MEMORY_QUANTITY_PATTERN = /^\+?(?:\d+(?:\.\d+)?|\.\d+)(?:(?:[eE][+-]?\d+)|Ei|Pi|Ti|Gi|Mi|Ki|E|P|T|G|M|k|m)?$/;
+
+const MEMORY_MULTIPLIERS: Record<string, number> = {
+  "": 1,
+  m: 1e-3,
+  k: 1e3,
+  M: 1e6,
+  G: 1e9,
+  T: 1e12,
+  P: 1e15,
+  E: 1e18,
+  Ki: 2 ** 10,
+  Mi: 2 ** 20,
+  Gi: 2 ** 30,
+  Ti: 2 ** 40,
+  Pi: 2 ** 50,
+  Ei: 2 ** 60,
+};
 
 function validateDnsName(value: string, label: string, labelOnly = false) {
   const trimmed = value.trim();
@@ -111,6 +135,58 @@ function validateStorageQuantity(value: string, label: string) {
   if (!trimmed) return `${label} is required.`;
   if (!STORAGE_QUANTITY_PATTERN.test(trimmed) || Number.parseFloat(trimmed) <= 0) {
     return `${label} must be a positive Kubernetes quantity such as 1Gi or 500Mi.`;
+  }
+  return undefined;
+}
+
+function parseCpuQuantity(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || !CPU_QUANTITY_PATTERN.test(trimmed)) return undefined;
+  const normalized = trimmed.startsWith("+") ? trimmed.slice(1) : trimmed;
+  const cpu = normalized.endsWith("m")
+    ? Number(normalized.slice(0, -1)) / 1000
+    : Number(normalized);
+  const milliCpu = cpu * 1000;
+  if (
+    !Number.isFinite(cpu) ||
+    cpu < 0 ||
+    Math.abs(milliCpu - Math.round(milliCpu)) > 1e-9
+  ) {
+    return undefined;
+  }
+  return cpu;
+}
+
+function parseMemoryQuantity(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed || !MEMORY_QUANTITY_PATTERN.test(trimmed)) return undefined;
+  const normalized = trimmed.startsWith("+") ? trimmed.slice(1) : trimmed;
+  const exponentMatch = normalized.match(/^(.+?)[eE]([+-]?\d+)$/);
+  if (exponentMatch) {
+    const bytes = Number(exponentMatch[1]) * 10 ** Number(exponentMatch[2]);
+    return Number.isFinite(bytes) && bytes >= 0 ? bytes : undefined;
+  }
+  const suffix = Object.keys(MEMORY_MULTIPLIERS)
+    .filter(Boolean)
+    .sort((left, right) => right.length - left.length)
+    .find((candidate) => normalized.endsWith(candidate)) ?? "";
+  const amount = Number(suffix ? normalized.slice(0, -suffix.length) : normalized);
+  const bytes = amount * MEMORY_MULTIPLIERS[suffix];
+  return Number.isFinite(bytes) && bytes >= 0 ? bytes : undefined;
+}
+
+function validateCpuQuantity(value: string, label: string) {
+  if (!value.trim()) return undefined;
+  if (parseCpuQuantity(value) === undefined) {
+    return `${label} must be a non-negative CPU quantity with at least 1m precision, such as 250m or 0.5.`;
+  }
+  return undefined;
+}
+
+function validateMemoryQuantity(value: string, label: string) {
+  if (!value.trim()) return undefined;
+  if (parseMemoryQuantity(value) === undefined) {
+    return `${label} must be a non-negative memory quantity such as 256Mi or 1G.`;
   }
   return undefined;
 }
@@ -314,6 +390,25 @@ export function validateManifestFields(input: ValidationInput) {
       }
       if (port.name) portNames.add(port.name);
     });
+
+    if (container.resourcesEnabled) {
+      add(`container-cpu-request-${container.id}`, validateCpuQuantity(container.cpuRequest, "CPU request"));
+      add(`container-memory-request-${container.id}`, validateMemoryQuantity(container.memoryRequest, "Memory request"));
+      add(`container-cpu-limit-${container.id}`, validateCpuQuantity(container.cpuLimit, "CPU limit"));
+      add(`container-memory-limit-${container.id}`, validateMemoryQuantity(container.memoryLimit, "Memory limit"));
+
+      const cpuRequest = parseCpuQuantity(container.cpuRequest);
+      const cpuLimit = parseCpuQuantity(container.cpuLimit);
+      if (cpuRequest !== undefined && cpuLimit !== undefined && cpuLimit < cpuRequest) {
+        errors[`container-cpu-limit-${container.id}`] = "CPU limit must be greater than or equal to CPU request.";
+      }
+
+      const memoryRequest = parseMemoryQuantity(container.memoryRequest);
+      const memoryLimit = parseMemoryQuantity(container.memoryLimit);
+      if (memoryRequest !== undefined && memoryLimit !== undefined && memoryLimit < memoryRequest) {
+        errors[`container-memory-limit-${container.id}`] = "Memory limit must be greater than or equal to memory request.";
+      }
+    }
   });
 
   const volumeNames = new Set<string>();

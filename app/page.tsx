@@ -1680,24 +1680,28 @@ export default function Home() {
                               value={container.cpuRequest}
                               onChange={(value) => updateContainer(container.id, { cpuRequest: value })}
                               placeholder="250m"
+                              error={validationErrors[`container-cpu-request-${container.id}`]}
                             />
                             <Field
                               label="Memory request"
                               value={container.memoryRequest}
                               onChange={(value) => updateContainer(container.id, { memoryRequest: value })}
                               placeholder="256Mi"
+                              error={validationErrors[`container-memory-request-${container.id}`]}
                             />
                             <Field
                               label="CPU limit"
                               value={container.cpuLimit}
                               onChange={(value) => updateContainer(container.id, { cpuLimit: value })}
                               placeholder="500m"
+                              error={validationErrors[`container-cpu-limit-${container.id}`]}
                             />
                             <Field
                               label="Memory limit"
                               value={container.memoryLimit}
                               onChange={(value) => updateContainer(container.id, { memoryLimit: value })}
                               placeholder="512Mi"
+                              error={validationErrors[`container-memory-limit-${container.id}`]}
                             />
                           </div>
                         </div>

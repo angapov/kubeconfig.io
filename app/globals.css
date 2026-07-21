@@ -780,12 +780,16 @@ summary:focus-visible {
 .repeat-row {
   display: grid;
   grid-template-columns: minmax(110px, 1.2fr) minmax(105px, 0.85fr) minmax(105px, 0.85fr) 34px;
-  align-items: end;
+  align-items: start;
   gap: 10px;
   padding: 15px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface-soft);
+}
+
+.repeat-row > .remove-button {
+  margin-top: 20px;
 }
 
 .service-port-row {
