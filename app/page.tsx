@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, type SetStateAction } from "react";
-import { validateManifestFields } from "./validation";
+import { validateManifestFields } from "./validation/validate";
 
 type Platform = "Kubernetes" | "OpenShift";
 type ResourceKind =
