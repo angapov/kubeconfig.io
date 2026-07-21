@@ -130,9 +130,13 @@ summary:focus-visible {
 }
 
 .version-picker label {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: var(--blue-dark);
+  background: var(--blue-soft);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
 }
 
 .version-picker select {
@@ -143,16 +147,6 @@ summary:focus-visible {
   color: var(--ink);
   background: var(--surface);
   font-weight: 650;
-}
-
-.latest-badge {
-  padding: 5px 8px;
-  border-radius: 999px;
-  color: var(--blue-dark);
-  background: var(--blue-soft);
-  font-size: 11px;
-  font-weight: 650;
-  white-space: nowrap;
 }
 
 .schema-chip {
@@ -253,10 +247,20 @@ summary:focus-visible {
   border-bottom: 1px solid var(--line);
 }
 
+.form-section:not(.collapsible-form-section) {
+  display: grid;
+  gap: 18px;
+}
+
+.form-section:not(.collapsible-form-section) > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
 .section-title {
   min-height: 40px;
   gap: 12px;
-  margin-bottom: 19px;
+  margin-bottom: 0;
 }
 
 .section-title > div {
@@ -372,10 +376,18 @@ summary:focus-visible {
 
 .container-card,
 .volume-card {
+  display: grid;
+  gap: 14px;
   padding: 18px;
   border: 1px solid #d5e2f4;
   border-radius: 13px;
   background: var(--surface-soft);
+}
+
+.container-card > *,
+.volume-card > * {
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
 .container-card-head > span,
@@ -389,13 +401,13 @@ summary:focus-visible {
 .container-list {
   display: grid;
   gap: 14px;
-  margin-bottom: 18px;
+  margin-bottom: 0;
 }
 
 .container-card-head,
 .volume-card-head {
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 0;
 }
 
 .container-card-head button,
@@ -422,7 +434,7 @@ summary:focus-visible {
   align-items: center;
   flex-wrap: wrap;
   gap: 7px;
-  margin-top: 3px;
+  margin-top: 0;
 }
 
 .container-actions .text-action {
@@ -431,13 +443,15 @@ summary:focus-visible {
 }
 
 .container-subsection {
-  margin-top: 14px;
+  display: grid;
+  gap: 12px;
+  margin-top: 0;
   padding-top: 14px;
   border-top: 1px solid var(--line);
 }
 
 .container-subsection-title {
-  margin-bottom: 10px;
+  margin-bottom: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -582,17 +596,19 @@ summary:focus-visible {
 }
 
 .mount-points-section {
-  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+  margin-top: 0;
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }
 
 .mount-points-section + .check-field {
-  margin-top: 12px;
+  margin-top: 0;
 }
 
 .mount-points-heading {
-  margin-bottom: 11px;
+  margin-bottom: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -883,8 +899,7 @@ summary:focus-visible {
     gap: 14px;
   }
 
-  .schema-chip small,
-  .latest-badge {
+  .schema-chip small {
     display: none;
   }
 
@@ -893,7 +908,6 @@ summary:focus-visible {
     justify-content: space-between;
   }
 
-  .intro,
   .workspace {
     padding-left: 14px;
     padding-right: 14px;

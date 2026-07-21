@@ -495,7 +495,6 @@ export default function Home() {
               </option>
             ))}
           </select>
-          <span className="latest-badge">v1.35 recommended</span>
         </div>
 
         <div className="schema-chip" title="The supported field map is bundled with this client-only site">
