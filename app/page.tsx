@@ -400,19 +400,7 @@ export default function Home() {
       </header>
 
       <section className="intro">
-        <div>
-          <p className="eyebrow">VISUAL KUBERNETES BUILDER</p>
-          <h1>Compose a manifest without losing the YAML.</h1>
-          <p>
-            Configure familiar Kubernetes fields on the left. The manifest stays readable,
-            valid, and ready to copy on the right.
-          </p>
-        </div>
-        <ol className="workflow" aria-label="Builder workflow">
-          <li><span>1</span>Choose</li>
-          <li><span>2</span>Configure</li>
-          <li><span>3</span>Export</li>
-        </ol>
+        <p className="eyebrow">Visual Kubernetes YAML builder</p>
       </section>
 
       <section className="workspace">
