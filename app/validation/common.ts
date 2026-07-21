@@ -312,11 +312,15 @@ export function validatePodTemplate(input: ValidationInput, errors: ValidationEr
     });
   });
 
-  if (input.securityExpanded && input.serviceAccount.trim()) {
-    addError(
-      errors,
-      "service-account",
-      validateDnsName(input.serviceAccount, "Service account name"),
-    );
+  if (input.serviceAccountEnabled) {
+    if (!input.serviceAccount.trim()) {
+      errors["service-account"] = "Service account name is required.";
+    } else {
+      addError(
+        errors,
+        "service-account",
+        validateDnsName(input.serviceAccount, "Service account name"),
+      );
+    }
   }
 }

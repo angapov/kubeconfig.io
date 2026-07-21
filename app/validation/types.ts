@@ -72,6 +72,7 @@ export type ValidationInput = {
   pvCsiVolumeHandle: string;
   securityExpanded: boolean;
   serviceAccount: string;
+  serviceAccountEnabled: boolean;
   servicePorts: PortInput[];
   containers: ContainerInput[];
   volumes: VolumeInput[];

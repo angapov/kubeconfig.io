@@ -83,6 +83,7 @@ type ResourceState = {
   schedule: string;
   concurrencyPolicy: string;
   serviceAccount: string;
+  serviceAccountEnabled: boolean;
   securityExpanded: boolean;
   restartPolicy: string;
   serviceType: string;
@@ -330,7 +331,8 @@ function createDefaultResource(id: number): ResourceState {
     backoffLimit: "6",
     schedule: "*/5 * * * *",
     concurrencyPolicy: "Allow",
-    serviceAccount: "default",
+    serviceAccount: "",
+    serviceAccountEnabled: false,
     securityExpanded: false,
     restartPolicy: "Always",
     serviceType: "ClusterIP",
@@ -396,8 +398,8 @@ function buildResourceManifest(resourceState: ResourceState) {
     routeTlsEnabled,
     routeTlsTermination,
     schedule,
-    securityExpanded,
     serviceAccount,
+    serviceAccountEnabled,
     servicePorts,
     serviceType,
     storageAccessModes,
@@ -591,7 +593,7 @@ function buildResourceManifest(resourceState: ResourceState) {
     };
   } else {
     const podSpec: YamlObject = {
-      serviceAccountName: securityExpanded ? serviceAccount || undefined : undefined,
+      serviceAccountName: serviceAccountEnabled ? serviceAccount || undefined : undefined,
       restartPolicy: kind === "Deployment" ? undefined : restartPolicy,
       containers: containerSpecs,
       volumes: volumeSpecs,
@@ -752,6 +754,7 @@ export default function Home() {
     schedule,
     securityExpanded,
     serviceAccount,
+    serviceAccountEnabled,
     servicePorts,
     serviceType,
     storageAccessModes,
@@ -800,6 +803,8 @@ export default function Home() {
   const setSchedule = (value: SetStateAction<string>) => setResourceField("schedule", value);
   const setConcurrencyPolicy = (value: SetStateAction<string>) => setResourceField("concurrencyPolicy", value);
   const setServiceAccount = (value: SetStateAction<string>) => setResourceField("serviceAccount", value);
+  const setServiceAccountEnabled = (value: SetStateAction<boolean>) =>
+    setResourceField("serviceAccountEnabled", value);
   const setSecurityExpanded = (value: SetStateAction<boolean>) => setResourceField("securityExpanded", value);
   const setRestartPolicy = (value: SetStateAction<string>) => setResourceField("restartPolicy", value);
   const setServiceType = (value: SetStateAction<string>) => setResourceField("serviceType", value);
@@ -1862,7 +1867,7 @@ export default function Home() {
               <section className="form-section">
                 <div className="section-title with-action">
                   <span className="section-number">03</span>
-                  <div><h3>Storage</h3><p>Attach storage and configuration to selected containers.</p></div>
+                  <div><h3>Storage</h3><p>Attach volumes to containers.</p></div>
                   <button
                     className="text-action"
                     type="button"
@@ -2036,18 +2041,45 @@ export default function Home() {
                     <span className="section-number">04</span>
                     <div>
                       <h3>Security</h3>
-                      <p>Configure pod-level identity and security settings.</p>
+                      <p>Configure workload security settings.</p>
                     </div>
                     <span className="disclosure-icon" aria-hidden="true">⌄</span>
                   </summary>
                   <div className="security-content">
-                    <Field
-                      label="Service account name"
-                      value={serviceAccount}
-                      onChange={setServiceAccount}
-                      hint="Must exist in the selected namespace."
-                      error={validationErrors["service-account"]}
-                    />
+                    {!serviceAccountEnabled ? (
+                      <button
+                        className="text-action security-add-action"
+                        type="button"
+                        onClick={() => setServiceAccountEnabled(true)}
+                      >
+                        <span aria-hidden="true">＋</span>Add ServiceAccount
+                      </button>
+                    ) : (
+                      <div className="security-item">
+                        <div className="security-item-heading">
+                          <strong>ServiceAccount</strong>
+                          <button
+                            className="remove-button"
+                            type="button"
+                            aria-label="Remove ServiceAccount"
+                            onClick={() => {
+                              setServiceAccountEnabled(false);
+                              setServiceAccount("");
+                            }}
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <Field
+                          label="Service account name"
+                          value={serviceAccount}
+                          onChange={setServiceAccount}
+                          hint="Must exist in the selected namespace."
+                          required
+                          error={validationErrors["service-account"]}
+                        />
+                      </div>
+                    )}
                   </div>
                 </details>
               </section>
