@@ -1,4 +1,4 @@
-type ResourceKind = "Deployment" | "Pod" | "Service" | "Job" | "CronJob";
+type ResourceKind = "Deployment" | "Pod" | "Service" | "Job" | "CronJob" | "Route";
 
 type PortInput = {
   id: number;
@@ -36,6 +36,10 @@ type ValidationInput = {
   parallelism: string;
   backoffLimit: string;
   schedule: string;
+  routeHost: string;
+  routePath: string;
+  routeServiceName: string;
+  routeTargetPort: string;
   securityExpanded: boolean;
   serviceAccount: string;
   servicePorts: PortInput[];
@@ -113,7 +117,14 @@ export function validateManifestFields(input: ValidationInput) {
     if (error) errors[key] = error;
   };
 
-  add("name", validateDnsName(input.name, `${input.kind} name`, input.kind === "Service"));
+  add(
+    "name",
+    validateDnsName(
+      input.name,
+      `${input.kind} name`,
+      input.kind === "Service" || input.kind === "Route",
+    ),
+  );
   if (input.kind === "CronJob" && input.name.length > 52) {
     errors.name = "CronJob name must be 52 characters or fewer.";
   }
@@ -135,6 +146,29 @@ export function validateManifestFields(input: ValidationInput) {
 
   if (input.kind === "CronJob" && !input.schedule.trim()) {
     errors.schedule = "Schedule is required.";
+  }
+
+  if (input.kind === "Route") {
+    add(
+      "routeServiceName",
+      validateDnsName(input.routeServiceName, "Service name", true),
+    );
+    if (input.routeHost.trim()) {
+      add("routeHost", validateDnsName(input.routeHost, "Hostname"));
+    }
+    if (input.routePath.trim() && !input.routePath.startsWith("/")) {
+      errors.routePath = "Path must start with /.";
+    } else if (/\s/.test(input.routePath)) {
+      errors.routePath = "Path cannot contain spaces.";
+    }
+    if (input.routeTargetPort.trim()) {
+      if (/^\d+$/.test(input.routeTargetPort)) {
+        add("routeTargetPort", validatePort(input.routeTargetPort, "Target port"));
+      } else {
+        add("routeTargetPort", validatePortName(input.routeTargetPort));
+      }
+    }
+    return errors;
   }
 
   if (input.kind === "Service") {

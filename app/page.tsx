@@ -3,7 +3,8 @@
 import { useMemo, useRef, useState, type SetStateAction } from "react";
 import { validateManifestFields } from "./validation";
 
-type ResourceKind = "Deployment" | "Pod" | "Service" | "Job" | "CronJob";
+type Platform = "Kubernetes" | "OpenShift";
+type ResourceKind = "Deployment" | "Pod" | "Service" | "Job" | "CronJob" | "Route";
 type Protocol = "TCP" | "UDP" | "SCTP";
 type VolumeType = "emptyDir" | "configMap" | "secret" | "persistentVolumeClaim";
 
@@ -13,6 +14,7 @@ const RESOURCE_KIND_ABBREVIATIONS: Record<ResourceKind, string> = {
   Pod: "P",
   Job: "J",
   Service: "S",
+  Route: "R",
 };
 
 type PortField = {
@@ -67,6 +69,13 @@ type ResourceState = {
   securityExpanded: boolean;
   restartPolicy: string;
   serviceType: string;
+  routeHost: string;
+  routePath: string;
+  routeServiceName: string;
+  routeTargetPort: string;
+  routeTlsEnabled: boolean;
+  routeTlsTermination: string;
+  routeInsecurePolicy: string;
   containers: ContainerField[];
   servicePorts: PortField[];
   volumes: VolumeField[];
@@ -77,7 +86,8 @@ interface YamlObject {
   [key: string]: YamlValue | undefined;
 }
 
-const VERSION_OPTIONS = ["1.35", "1.34", "1.33"];
+const KUBERNETES_VERSION_OPTIONS = ["1.35", "1.34", "1.33"];
+const OPENSHIFT_VERSION_OPTIONS = ["4.21", "4.20", "4.19", "4.18", "4.17"];
 
 function createDefaultPort(index: number, id = Date.now()): PortField {
   if (index === 0) {
@@ -196,6 +206,13 @@ function createDefaultResource(id: number): ResourceState {
     securityExpanded: false,
     restartPolicy: "Always",
     serviceType: "ClusterIP",
+    routeHost: "",
+    routePath: "",
+    routeServiceName: "example",
+    routeTargetPort: "http",
+    routeTlsEnabled: false,
+    routeTlsTermination: "edge",
+    routeInsecurePolicy: "None",
     containers: [
       {
         id: 1,
@@ -236,6 +253,13 @@ function buildResourceManifest(resourceState: ResourceState) {
     namespace,
     replicas,
     restartPolicy,
+    routeHost,
+    routeInsecurePolicy,
+    routePath,
+    routeServiceName,
+    routeTargetPort,
+    routeTlsEnabled,
+    routeTlsTermination,
     schedule,
     securityExpanded,
     serviceAccount,
@@ -307,7 +331,35 @@ function buildResourceManifest(resourceState: ResourceState) {
 
   let resource: YamlObject;
 
-  if (kind === "Service") {
+  if (kind === "Route") {
+    const trimmedTargetPort = routeTargetPort.trim();
+    resource = {
+      apiVersion: "route.openshift.io/v1",
+      kind: "Route",
+      metadata,
+      spec: {
+        host: routeHost.trim() || undefined,
+        path: routePath.trim() || undefined,
+        to: {
+          kind: "Service",
+          name: routeServiceName.trim(),
+        },
+        port: trimmedTargetPort
+          ? {
+              targetPort: /^\d+$/.test(trimmedTargetPort)
+                ? Number(trimmedTargetPort)
+                : trimmedTargetPort,
+            }
+          : undefined,
+        tls: routeTlsEnabled
+          ? {
+              termination: routeTlsTermination,
+              insecureEdgeTerminationPolicy: routeInsecurePolicy,
+            }
+          : undefined,
+      },
+    };
+  } else if (kind === "Service") {
     resource = {
       apiVersion: "v1",
       kind: "Service",
@@ -458,7 +510,9 @@ function SelectField({
 }
 
 export default function Home() {
-  const [version, setVersion] = useState("1.35");
+  const [platform, setPlatform] = useState<Platform>("Kubernetes");
+  const [kubernetesVersion, setKubernetesVersion] = useState("1.35");
+  const [openShiftVersion, setOpenShiftVersion] = useState("4.21");
   const [resources, setResources] = useState<ResourceState[]>(() => [createDefaultResource(1)]);
   const [activeResourceId, setActiveResourceId] = useState(1);
   const nextResourceId = useRef(2);
@@ -477,6 +531,13 @@ export default function Home() {
     namespace,
     replicas,
     restartPolicy,
+    routeHost,
+    routeInsecurePolicy,
+    routePath,
+    routeServiceName,
+    routeTargetPort,
+    routeTlsEnabled,
+    routeTlsTermination,
     schedule,
     securityExpanded,
     serviceAccount,
@@ -515,11 +576,18 @@ export default function Home() {
   const setSecurityExpanded = (value: SetStateAction<boolean>) => setResourceField("securityExpanded", value);
   const setRestartPolicy = (value: SetStateAction<string>) => setResourceField("restartPolicy", value);
   const setServiceType = (value: SetStateAction<string>) => setResourceField("serviceType", value);
+  const setRouteHost = (value: SetStateAction<string>) => setResourceField("routeHost", value);
+  const setRoutePath = (value: SetStateAction<string>) => setResourceField("routePath", value);
+  const setRouteServiceName = (value: SetStateAction<string>) => setResourceField("routeServiceName", value);
+  const setRouteTargetPort = (value: SetStateAction<string>) => setResourceField("routeTargetPort", value);
+  const setRouteTlsEnabled = (value: SetStateAction<boolean>) => setResourceField("routeTlsEnabled", value);
+  const setRouteInsecurePolicy = (value: SetStateAction<string>) => setResourceField("routeInsecurePolicy", value);
   const setContainers = (value: SetStateAction<ContainerField[]>) => setResourceField("containers", value);
   const setServicePorts = (value: SetStateAction<PortField[]>) => setResourceField("servicePorts", value);
   const setVolumes = (value: SetStateAction<VolumeField[]>) => setResourceField("volumes", value);
 
   function changeResourceKind(nextKind: ResourceKind) {
+    if (nextKind === "Route") setPlatform("OpenShift");
     setResources((current) =>
       current.map((resource) =>
         resource.id === activeResourceId
@@ -530,6 +598,23 @@ export default function Home() {
                 (nextKind === "Job" || nextKind === "CronJob") && resource.restartPolicy === "Always"
                   ? "Never"
                   : resource.restartPolicy,
+            }
+          : resource,
+      ),
+    );
+  }
+
+  function changeRouteTlsTermination(nextTermination: string) {
+    setResources((current) =>
+      current.map((resource) =>
+        resource.id === activeResourceId
+          ? {
+              ...resource,
+              routeTlsTermination: nextTermination,
+              routeInsecurePolicy:
+                nextTermination === "passthrough" && resource.routeInsecurePolicy === "Allow"
+                  ? "None"
+                  : resource.routeInsecurePolicy,
             }
           : resource,
       ),
@@ -651,14 +736,24 @@ export default function Home() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = resources.length > 1 ? "kubernetes-resources.yaml" : `${name || kind.toLowerCase()}.yaml`;
+    link.download = manifestFileName;
     link.click();
     URL.revokeObjectURL(url);
   }
 
   const apiVersion =
-    kind === "Deployment" ? "apps/v1" : kind === "Job" || kind === "CronJob" ? "batch/v1" : "v1";
-  const manifestFileName = resources.length > 1 ? "kubernetes-resources.yaml" : `${name || kind.toLowerCase()}.yaml`;
+    kind === "Deployment"
+      ? "apps/v1"
+      : kind === "Job" || kind === "CronJob"
+        ? "batch/v1"
+        : kind === "Route"
+          ? "route.openshift.io/v1"
+          : "v1";
+  const version = platform === "OpenShift" ? openShiftVersion : kubernetesVersion;
+  const versionOptions = platform === "OpenShift" ? OPENSHIFT_VERSION_OPTIONS : KUBERNETES_VERSION_OPTIONS;
+  const manifestFileName = resources.length > 1
+    ? platform === "OpenShift" ? "openshift-resources.yaml" : "kubernetes-resources.yaml"
+    : `${name || kind.toLowerCase()}.yaml`;
   const manifestLines = manifest.split("\n");
 
   return (
@@ -670,23 +765,42 @@ export default function Home() {
           </div>
           <div>
             <div className="brand-name">Kubeconfig.io</div>
-            <div className="brand-tagline">Visual Kubernetes YAML builder</div>
+            <div className="brand-tagline">Visual Kubernetes and OpenShift YAML builder</div>
           </div>
         </div>
 
-        <div className="version-picker">
-          <label htmlFor="kubernetes-version">Kubernetes version</label>
-          <select
-            id="kubernetes-version"
-            value={version}
-            onChange={(event) => setVersion(event.target.value)}
-          >
-            {VERSION_OPTIONS.map((item) => (
-              <option key={item} value={item}>
-                v{item}
+        <div className="platform-controls">
+          <div className="version-picker">
+            <label htmlFor="platform">Platform</label>
+            <select
+              id="platform"
+              value={platform}
+              onChange={(event) => setPlatform(event.target.value as Platform)}
+            >
+              <option value="Kubernetes" disabled={resources.some((resource) => resource.kind === "Route")}>
+                Kubernetes
               </option>
-            ))}
-          </select>
+              <option value="OpenShift">OpenShift</option>
+            </select>
+          </div>
+          <div className="version-picker">
+            <label htmlFor="platform-version">{platform} version</label>
+            <select
+              id="platform-version"
+              value={version}
+              onChange={(event) =>
+                platform === "OpenShift"
+                  ? setOpenShiftVersion(event.target.value)
+                  : setKubernetesVersion(event.target.value)
+              }
+            >
+              {versionOptions.map((item) => (
+                <option key={item} value={item}>
+                  v{item}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="schema-chip" title="The supported field map is bundled with this client-only site">
@@ -705,7 +819,7 @@ export default function Home() {
             <div className="synced-state"><span />Synced</div>
           </div>
 
-          <div className="resource-tabs" aria-label="Kubernetes resources">
+          <div className="resource-tabs" aria-label={`${platform} resources`}>
             <div className="resource-tab-list" role="tablist">
               {resources.map((resource, index) => {
                 const tabErrorCount = Object.keys(validationByResource.get(resource.id) ?? {}).length;
@@ -769,6 +883,7 @@ export default function Home() {
                     { value: "Job", label: "Job" },
                     { value: "CronJob", label: "CronJob" },
                     { value: "Service", label: "Service" },
+                    ...(platform === "OpenShift" ? [{ value: "Route", label: "Route" }] : []),
                   ]}
                 />
                 <Field label="Name" value={name} onChange={setName} required error={validationErrors.name} />
@@ -860,7 +975,89 @@ export default function Home() {
               />
             </section>
 
-            {kind !== "Service" && (
+            {kind === "Route" && (
+              <section className="form-section">
+                <div className="section-title">
+                  <span className="section-number">02</span>
+                  <div>
+                    <h3>Route</h3>
+                    <p>Expose an OpenShift Service through the cluster router.</p>
+                  </div>
+                  <code>OpenShift only</code>
+                </div>
+                <div className="field-grid two-col">
+                  <Field
+                    label="Service name"
+                    value={routeServiceName}
+                    onChange={setRouteServiceName}
+                    required
+                    error={validationErrors.routeServiceName}
+                  />
+                  <Field
+                    label="Target port"
+                    value={routeTargetPort}
+                    onChange={setRouteTargetPort}
+                    placeholder="http or 8080"
+                    hint="Named Service port or port number."
+                    error={validationErrors.routeTargetPort}
+                  />
+                  <Field
+                    label="Hostname"
+                    value={routeHost}
+                    onChange={setRouteHost}
+                    placeholder="app.example.com"
+                    hint="Optional. OpenShift can generate a hostname when empty."
+                    error={validationErrors.routeHost}
+                  />
+                  <Field
+                    label="Path"
+                    value={routePath}
+                    onChange={setRoutePath}
+                    placeholder="/"
+                    hint="Optional URL path prefix."
+                    error={validationErrors.routePath}
+                  />
+                </div>
+
+                <label className="check-field route-tls-toggle">
+                  <input
+                    type="checkbox"
+                    checked={routeTlsEnabled}
+                    onChange={(event) => setRouteTlsEnabled(event.target.checked)}
+                  />
+                  Enable TLS
+                </label>
+
+                {routeTlsEnabled && (
+                  <div className="field-grid two-col route-tls-fields">
+                    <SelectField
+                      label="TLS termination"
+                      value={routeTlsTermination}
+                      onChange={changeRouteTlsTermination}
+                      options={[
+                        { value: "edge", label: "Edge" },
+                        { value: "reencrypt", label: "Re-encrypt" },
+                        { value: "passthrough", label: "Passthrough" },
+                      ]}
+                    />
+                    <SelectField
+                      label="Insecure traffic policy"
+                      value={routeInsecurePolicy}
+                      onChange={setRouteInsecurePolicy}
+                      options={[
+                        { value: "None", label: "None" },
+                        ...(routeTlsTermination === "passthrough"
+                          ? []
+                          : [{ value: "Allow", label: "Allow" }]),
+                        { value: "Redirect", label: "Redirect" },
+                      ]}
+                    />
+                  </div>
+                )}
+              </section>
+            )}
+
+            {kind !== "Service" && kind !== "Route" && (
               <section className="form-section">
                 <div className="section-title with-action">
                   <span className="section-number">02</span>
@@ -1114,7 +1311,7 @@ export default function Home() {
             </section>
             )}
 
-            {kind !== "Service" && (
+            {kind !== "Service" && kind !== "Route" && (
               <section className="form-section">
                 <div className="section-title with-action">
                   <span className="section-number">03</span>
@@ -1281,7 +1478,7 @@ export default function Home() {
               </section>
             )}
 
-            {kind !== "Service" && (
+            {kind !== "Service" && kind !== "Route" && (
               <section className="form-section collapsible-form-section">
                 <details
                   className="security-section"
@@ -1312,14 +1509,18 @@ export default function Home() {
             <aside className="schema-note">
               <div className="schema-icon" aria-hidden="true">API</div>
               <div>
-                <strong>Kubernetes v{version} field map</strong>
+                <strong>{platform} v{version} field map</strong>
                 <p>
                   This builder uses a bundled schema subset, so it works without a server or cluster credentials.
-                  Full cluster-specific validation can later load OpenAPI v3 from a Kubernetes API server.
+                  Full cluster-specific validation can later load OpenAPI v3 from the cluster API server.
                 </p>
               </div>
               <a
-                href={`https://kubernetes.io/docs/reference/generated/kubernetes-api/v${version}/`}
+                href={
+                  platform === "OpenShift"
+                    ? `https://docs.redhat.com/en/documentation/openshift_container_platform/${version}/html/network_apis/route-route-openshift-io-v1`
+                    : `https://kubernetes.io/docs/reference/generated/kubernetes-api/v${version}/`
+                }
                 target="_blank"
                 rel="noreferrer"
               >
@@ -1346,12 +1547,12 @@ export default function Home() {
             <div className={isManifestValid ? "" : "invalid-state"}>
               <span className={isManifestValid ? "valid-dot" : "invalid-dot"} />
               {isManifestValid
-                ? "Kubernetes validation passed"
+                ? `${platform} validation passed`
                 : `${validationErrorCount} validation ${validationErrorCount === 1 ? "error" : "errors"}`}
             </div>
-            <span>{resources.length} {resources.length === 1 ? "resource" : "resources"} · Kubernetes v{version}</span>
+            <span>{resources.length} {resources.length === 1 ? "resource" : "resources"} · {platform} v{version}</span>
           </div>
-          <div className="code-editor" aria-label="Generated Kubernetes YAML">
+          <div className="code-editor" aria-label={`Generated ${platform} YAML`}>
             <div className="line-numbers" aria-hidden="true">
               {manifestLines.map((_, index) => <span key={index}>{index + 1}</span>)}
             </div>
