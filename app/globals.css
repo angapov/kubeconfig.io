@@ -85,6 +85,7 @@ a:focus-visible {
 .yaml-actions,
 .editor-meta,
 .editor-footer,
+.container-card-head,
 .volume-card-head,
 .check-field {
   display: flex;
@@ -111,12 +112,6 @@ a:focus-visible {
 .brand-name {
   font-weight: 650;
   letter-spacing: -0.02em;
-}
-
-.brand-subtitle {
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 12px;
 }
 
 .version-picker {
@@ -230,12 +225,6 @@ a:focus-visible {
   gap: 20px;
   padding: 18px 25px;
   border-bottom: 1px solid var(--line);
-}
-
-.panel-heading h2 {
-  margin: 4px 0 0;
-  font-size: 20px;
-  letter-spacing: -0.025em;
 }
 
 .synced-state {
@@ -379,7 +368,7 @@ a:focus-visible {
   line-height: 1.4;
 }
 
-.subpanel,
+.container-card,
 .volume-card {
   padding: 18px;
   border: 1px solid #d5e2f4;
@@ -387,13 +376,90 @@ a:focus-visible {
   background: var(--surface-soft);
 }
 
-.subpanel-label,
+.container-card-head > span,
 .volume-card-head > span {
-  margin-bottom: 15px;
   color: #475467;
   font-size: 10px;
   font-weight: 720;
   letter-spacing: 0.1em;
+}
+
+.container-list {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.container-card-head,
+.volume-card-head {
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.container-card-head button,
+.volume-card-head button {
+  padding: 5px 8px;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
+}
+
+.container-card-head button:hover:not(:disabled),
+.volume-card-head button:hover {
+  color: #d92d20;
+}
+
+.container-card-head button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.container-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 3px;
+}
+
+.container-actions .text-action {
+  border: 1px solid #c9d8ec;
+  background: #fff;
+}
+
+.container-subsection {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.container-subsection-title {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.container-subsection-title strong {
+  color: #344054;
+  font-size: 12px;
+}
+
+.container-subsection-title span {
+  color: var(--quiet);
+  font-size: 10px;
+}
+
+.empty-state {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px dashed #c6d4e7;
+  border-radius: 9px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.65);
+  font-size: 11px;
 }
 
 .text-action {
@@ -462,27 +528,6 @@ a:focus-visible {
   opacity: 0.35;
 }
 
-.volume-card-head {
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-
-.volume-card-head > span {
-  margin: 0;
-}
-
-.volume-card-head button {
-  padding: 5px 8px;
-  border: 0;
-  color: var(--muted);
-  background: transparent;
-  font-size: 11px;
-}
-
-.volume-card-head button:hover {
-  color: #d92d20;
-}
-
 .check-field {
   width: fit-content;
   gap: 8px;
@@ -495,6 +540,59 @@ a:focus-visible {
   width: 16px;
   height: 16px;
   accent-color: var(--blue);
+}
+
+.multi-select-field {
+  grid-column: 1 / -1;
+}
+
+.multi-select {
+  position: relative;
+}
+
+.multi-select summary {
+  min-height: 42px;
+  padding: 0 36px 0 12px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  color: var(--ink);
+  background: var(--surface);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  list-style-position: inside;
+}
+
+.multi-select summary:hover {
+  border-color: #9db4d4;
+}
+
+.multi-select-menu {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  padding: 10px;
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 12px 30px rgba(35, 55, 80, 0.16);
+}
+
+.multi-select-menu .check-field {
+  width: 100%;
+  padding: 8px;
+  border-radius: 7px;
+}
+
+.multi-select-menu .check-field:hover {
+  background: var(--blue-soft);
 }
 
 .schema-note {
@@ -749,7 +847,6 @@ a:focus-visible {
     gap: 14px;
   }
 
-  .brand-subtitle,
   .schema-chip small,
   .latest-badge {
     display: none;

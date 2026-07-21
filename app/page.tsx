@@ -14,6 +14,19 @@ type PortField = {
   protocol: Protocol;
 };
 
+type ContainerField = {
+  id: number;
+  name: string;
+  image: string;
+  pullPolicy: string;
+  ports: PortField[];
+  resourcesEnabled: boolean;
+  cpuRequest: string;
+  memoryRequest: string;
+  cpuLimit: string;
+  memoryLimit: string;
+};
+
 type VolumeField = {
   id: number;
   name: string;
@@ -21,10 +34,13 @@ type VolumeField = {
   source: string;
   mountPath: string;
   readOnly: boolean;
+  containerIds: number[];
 };
 
 type YamlValue = string | number | boolean | YamlObject | YamlValue[];
-type YamlObject = Record<string, YamlValue | undefined>;
+interface YamlObject {
+  [key: string]: YamlValue | undefined;
+}
 
 const VERSION_OPTIONS = ["1.35", "1.34", "1.33"];
 
@@ -172,6 +188,51 @@ function SelectField({
   );
 }
 
+function ContainerMultiSelect({
+  containers,
+  selectedIds,
+  onChange,
+}: {
+  containers: ContainerField[];
+  selectedIds: number[];
+  onChange: (ids: number[]) => void;
+}) {
+  const selectedNames = containers
+    .filter((container) => selectedIds.includes(container.id))
+    .map((container, index) => container.name || `Container ${index + 1}`);
+
+  return (
+    <div className="field multi-select-field">
+      <span className="field-label">Attach to containers</span>
+      <details className="multi-select">
+        <summary>
+          {selectedNames.length > 0
+            ? `${selectedNames.length} selected · ${selectedNames.join(", ")}`
+            : "Select containers"}
+        </summary>
+        <div className="multi-select-menu">
+          {containers.map((container, index) => (
+            <label className="check-field" key={container.id}>
+              <input
+                type="checkbox"
+                checked={selectedIds.includes(container.id)}
+                onChange={(event) =>
+                  onChange(
+                    event.target.checked
+                      ? [...selectedIds, container.id]
+                      : selectedIds.filter((id) => id !== container.id),
+                  )
+                }
+              />
+              {container.name || `Container ${index + 1}`}
+            </label>
+          ))}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 export default function Home() {
   const [version, setVersion] = useState("1.35");
   const [kind, setKind] = useState<ResourceKind>("Deployment");
@@ -181,16 +242,23 @@ export default function Home() {
   const [replicas, setReplicas] = useState("3");
   const [serviceAccount, setServiceAccount] = useState("default");
   const [restartPolicy, setRestartPolicy] = useState("Always");
-  const [containerName, setContainerName] = useState("api");
-  const [image, setImage] = useState("ghcr.io/acme/checkout:2.4.1");
-  const [pullPolicy, setPullPolicy] = useState("IfNotPresent");
-  const [cpuRequest, setCpuRequest] = useState("250m");
-  const [memoryRequest, setMemoryRequest] = useState("256Mi");
-  const [cpuLimit, setCpuLimit] = useState("500m");
-  const [memoryLimit, setMemoryLimit] = useState("512Mi");
   const [serviceType, setServiceType] = useState("ClusterIP");
-  const [ports, setPorts] = useState<PortField[]>([
-    { id: 1, name: "http", port: "8080", targetPort: "8080", protocol: "TCP" },
+  const [containers, setContainers] = useState<ContainerField[]>([
+    {
+      id: 1,
+      name: "api",
+      image: "ghcr.io/acme/checkout:2.4.1",
+      pullPolicy: "IfNotPresent",
+      ports: [],
+      resourcesEnabled: false,
+      cpuRequest: "250m",
+      memoryRequest: "256Mi",
+      cpuLimit: "500m",
+      memoryLimit: "512Mi",
+    },
+  ]);
+  const [servicePorts, setServicePorts] = useState<PortField[]>([
+    { id: 1, name: "http", port: "80", targetPort: "8080", protocol: "TCP" },
   ]);
   const [volumes, setVolumes] = useState<VolumeField[]>([
     {
@@ -200,6 +268,7 @@ export default function Home() {
       source: "checkout-data-pvc",
       mountPath: "/var/lib/checkout",
       readOnly: false,
+      containerIds: [1],
     },
   ]);
   const [copied, setCopied] = useState(false);
@@ -211,18 +280,6 @@ export default function Home() {
       namespace: namespace || "default",
       labels: parsedLabels,
     };
-
-    const containerPorts = ports.map((port) => ({
-      name: port.name || undefined,
-      containerPort: Number(port.port) || 80,
-      protocol: port.protocol,
-    }));
-
-    const volumeMounts = volumes.map((volume) => ({
-      name: volume.name || "volume",
-      mountPath: volume.mountPath || "/data",
-      readOnly: volume.readOnly || undefined,
-    }));
 
     const volumeSpecs = volumes.map((volume) => {
       const volumeName = volume.name || "volume";
@@ -244,23 +301,35 @@ export default function Home() {
       };
     });
 
-    const container = {
-      name: containerName || "app",
-      image: image || "nginx:latest",
-      imagePullPolicy: pullPolicy,
-      ports: containerPorts,
-      resources: {
-        requests: {
-          cpu: cpuRequest || undefined,
-          memory: memoryRequest || undefined,
-        },
-        limits: {
-          cpu: cpuLimit || undefined,
-          memory: memoryLimit || undefined,
-        },
-      },
-      volumeMounts,
-    };
+    const containerSpecs = containers.map((container) => ({
+      name: container.name || "app",
+      image: container.image || "nginx:latest",
+      imagePullPolicy: container.pullPolicy,
+      ports: container.ports.map((port) => ({
+        name: port.name || undefined,
+        containerPort: Number(port.port) || 80,
+        protocol: port.protocol,
+      })),
+      resources: container.resourcesEnabled
+        ? {
+            requests: {
+              cpu: container.cpuRequest || undefined,
+              memory: container.memoryRequest || undefined,
+            },
+            limits: {
+              cpu: container.cpuLimit || undefined,
+              memory: container.memoryLimit || undefined,
+            },
+          }
+        : undefined,
+      volumeMounts: volumes
+        .filter((volume) => volume.containerIds.includes(container.id))
+        .map((volume) => ({
+          name: volume.name || "volume",
+          mountPath: volume.mountPath || "/data",
+          readOnly: volume.readOnly || undefined,
+        })),
+    }));
 
     let resource: YamlObject;
 
@@ -272,7 +341,7 @@ export default function Home() {
         spec: {
           type: serviceType,
           selector: parsedLabels,
-          ports: ports.map((port) => ({
+          ports: servicePorts.map((port) => ({
             name: port.name || undefined,
             port: Number(port.port) || 80,
             targetPort: Number(port.targetPort) || Number(port.port) || 80,
@@ -284,7 +353,7 @@ export default function Home() {
       const podSpec: YamlObject = {
         serviceAccountName: serviceAccount || undefined,
         restartPolicy: kind === "Deployment" ? undefined : restartPolicy,
-        containers: [container],
+        containers: containerSpecs,
         volumes: volumeSpecs,
       };
 
@@ -313,27 +382,55 @@ export default function Home() {
 
     return `${toYaml(resource).join("\n")}\n`;
   }, [
-    containerName,
-    cpuLimit,
-    cpuRequest,
-    image,
+    containers,
     kind,
     labels,
-    memoryLimit,
-    memoryRequest,
     name,
     namespace,
-    ports,
-    pullPolicy,
     replicas,
     restartPolicy,
     serviceAccount,
     serviceType,
+    servicePorts,
     volumes,
   ]);
 
-  function updatePort(id: number, patch: Partial<PortField>) {
-    setPorts((current) => current.map((port) => (port.id === id ? { ...port, ...patch } : port)));
+  function updateServicePort(id: number, patch: Partial<PortField>) {
+    setServicePorts((current) =>
+      current.map((port) => (port.id === id ? { ...port, ...patch } : port)),
+    );
+  }
+
+  function updateContainer(id: number, patch: Partial<ContainerField>) {
+    setContainers((current) =>
+      current.map((container) => (container.id === id ? { ...container, ...patch } : container)),
+    );
+  }
+
+  function updateContainerPort(containerId: number, portId: number, patch: Partial<PortField>) {
+    setContainers((current) =>
+      current.map((container) =>
+        container.id === containerId
+          ? {
+              ...container,
+              ports: container.ports.map((port) =>
+                port.id === portId ? { ...port, ...patch } : port,
+              ),
+            }
+          : container,
+      ),
+    );
+  }
+
+  function removeContainer(containerId: number) {
+    if (containers.length === 1) return;
+    setContainers((current) => current.filter((container) => container.id !== containerId));
+    setVolumes((current) =>
+      current.map((volume) => ({
+        ...volume,
+        containerIds: volume.containerIds.filter((id) => id !== containerId),
+      })),
+    );
   }
 
   function updateVolume(id: number, patch: Partial<VolumeField>) {
@@ -369,8 +466,7 @@ export default function Home() {
             K
           </div>
           <div>
-            <div className="brand-name">Manifest Studio</div>
-            <div className="brand-subtitle">Kubernetes resource composer</div>
+            <div className="brand-name">Kubeconfig.io</div>
           </div>
         </div>
 
@@ -406,10 +502,7 @@ export default function Home() {
       <section className="workspace">
         <div className="builder-panel">
           <div className="panel-heading">
-            <div>
-              <p className="panel-kicker">RESOURCE CONFIGURATION</p>
-              <h2>Build from primitives</h2>
-            </div>
+            <p className="panel-kicker">RESOURCE CONFIGURATION</p>
             <div className="synced-state"><span />Synced</div>
           </div>
 
@@ -463,50 +556,214 @@ export default function Home() {
 
             {kind !== "Service" && (
               <section className="form-section">
-                <div className="section-title">
+                <div className="section-title with-action">
                   <span className="section-number">02</span>
-                  <div><h3>Container</h3><p>Set the image, identity, and compute envelope.</p></div>
+                  <div><h3>Container</h3><p>Add one or more containers to the pod specification.</p></div>
+                  <button
+                    className="text-action"
+                    type="button"
+                    onClick={() => {
+                      const containerId = Date.now();
+                      setContainers((current) => [
+                        ...current,
+                        {
+                          id: containerId,
+                          name: `container-${current.length + 1}`,
+                          image: "nginx:latest",
+                          pullPolicy: "IfNotPresent",
+                          ports: [],
+                          resourcesEnabled: false,
+                          cpuRequest: "250m",
+                          memoryRequest: "256Mi",
+                          cpuLimit: "500m",
+                          memoryLimit: "512Mi",
+                        },
+                      ]);
+                    }}
+                  >
+                    <span aria-hidden="true">＋</span>Add container
+                  </button>
                 </div>
-                <div className="subpanel">
-                  <div className="subpanel-label">PRIMARY CONTAINER</div>
-                  <div className="field-grid two-col">
-                    <Field label="Container name" value={containerName} onChange={setContainerName} required />
-                    <SelectField
-                      label="Image pull policy"
-                      value={pullPolicy}
-                      onChange={setPullPolicy}
-                      options={["IfNotPresent", "Always", "Never"].map((item) => ({ value: item, label: item }))}
-                    />
-                  </div>
-                  <Field label="Container image" value={image} onChange={setImage} required />
-                  <div className="resource-grid">
-                    <Field label="CPU request" value={cpuRequest} onChange={setCpuRequest} placeholder="250m" />
-                    <Field label="Memory request" value={memoryRequest} onChange={setMemoryRequest} placeholder="256Mi" />
-                    <Field label="CPU limit" value={cpuLimit} onChange={setCpuLimit} placeholder="500m" />
-                    <Field label="Memory limit" value={memoryLimit} onChange={setMemoryLimit} placeholder="512Mi" />
-                  </div>
-                  <Field
-                    label="Service account"
-                    value={serviceAccount}
-                    onChange={setServiceAccount}
-                    hint="Must exist in the selected namespace."
-                  />
+
+                <div className="container-list">
+                  {containers.map((container, containerIndex) => (
+                    <div className="container-card" key={container.id}>
+                      <div className="container-card-head">
+                        <span>CONTAINER {String(containerIndex + 1).padStart(2, "0")}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeContainer(container.id)}
+                          disabled={containers.length === 1}
+                        >
+                          Remove
+                        </button>
+                      </div>
+
+                      <div className="field-grid two-col">
+                        <Field
+                          label="Container name"
+                          value={container.name}
+                          onChange={(value) => updateContainer(container.id, { name: value })}
+                          required
+                        />
+                        <SelectField
+                          label="Image pull policy"
+                          value={container.pullPolicy}
+                          onChange={(value) => updateContainer(container.id, { pullPolicy: value })}
+                          options={["IfNotPresent", "Always", "Never"].map((item) => ({ value: item, label: item }))}
+                        />
+                      </div>
+                      <Field
+                        label="Container image"
+                        value={container.image}
+                        onChange={(value) => updateContainer(container.id, { image: value })}
+                        required
+                      />
+
+                      <div className="container-actions">
+                        <button
+                          className="text-action"
+                          type="button"
+                          onClick={() =>
+                            updateContainer(container.id, {
+                              ports: [
+                                ...container.ports,
+                                {
+                                  id: Date.now(),
+                                  name: `port-${container.ports.length + 1}`,
+                                  port: "8080",
+                                  targetPort: "8080",
+                                  protocol: "TCP",
+                                },
+                              ],
+                            })
+                          }
+                        >
+                          <span aria-hidden="true">＋</span>Add container port
+                        </button>
+                        <button
+                          className="text-action"
+                          type="button"
+                          onClick={() =>
+                            updateContainer(container.id, {
+                              resourcesEnabled: !container.resourcesEnabled,
+                            })
+                          }
+                        >
+                          <span aria-hidden="true">{container.resourcesEnabled ? "−" : "＋"}</span>
+                          {container.resourcesEnabled ? "Remove container resources" : "Add container resources"}
+                        </button>
+                      </div>
+
+                      <div className="container-subsection">
+                        <div className="container-subsection-title">
+                          <strong>Container ports</strong>
+                          <span>{container.ports.length === 0 ? "None exposed" : `${container.ports.length} configured`}</span>
+                        </div>
+                        {container.ports.length === 0 ? (
+                          <p className="empty-state">No container ports are exposed by default.</p>
+                        ) : (
+                          <div className="repeat-list">
+                            {container.ports.map((port, portIndex) => (
+                              <div className="repeat-row container-port-row" key={port.id}>
+                                <div className="repeat-index">{String(portIndex + 1).padStart(2, "0")}</div>
+                                <Field
+                                  label="Name"
+                                  value={port.name}
+                                  onChange={(value) => updateContainerPort(container.id, port.id, { name: value })}
+                                />
+                                <Field
+                                  label="Container port"
+                                  value={port.port}
+                                  onChange={(value) => updateContainerPort(container.id, port.id, { port: value })}
+                                  type="number"
+                                />
+                                <SelectField
+                                  label="Protocol"
+                                  value={port.protocol}
+                                  onChange={(value) =>
+                                    updateContainerPort(container.id, port.id, { protocol: value as Protocol })
+                                  }
+                                  options={["TCP", "UDP", "SCTP"].map((item) => ({ value: item, label: item }))}
+                                />
+                                <button
+                                  type="button"
+                                  className="remove-button"
+                                  aria-label={`Remove container port ${portIndex + 1}`}
+                                  onClick={() =>
+                                    updateContainer(container.id, {
+                                      ports: container.ports.filter((item) => item.id !== port.id),
+                                    })
+                                  }
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {container.resourcesEnabled && (
+                        <div className="container-subsection">
+                          <div className="container-subsection-title">
+                            <strong>Container resources</strong>
+                            <span>Requests and limits</span>
+                          </div>
+                          <div className="resource-grid">
+                            <Field
+                              label="CPU request"
+                              value={container.cpuRequest}
+                              onChange={(value) => updateContainer(container.id, { cpuRequest: value })}
+                              placeholder="250m"
+                            />
+                            <Field
+                              label="Memory request"
+                              value={container.memoryRequest}
+                              onChange={(value) => updateContainer(container.id, { memoryRequest: value })}
+                              placeholder="256Mi"
+                            />
+                            <Field
+                              label="CPU limit"
+                              value={container.cpuLimit}
+                              onChange={(value) => updateContainer(container.id, { cpuLimit: value })}
+                              placeholder="500m"
+                            />
+                            <Field
+                              label="Memory limit"
+                              value={container.memoryLimit}
+                              onChange={(value) => updateContainer(container.id, { memoryLimit: value })}
+                              placeholder="512Mi"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
+
+                <Field
+                  label="Service account"
+                  value={serviceAccount}
+                  onChange={setServiceAccount}
+                  hint="Must exist in the selected namespace."
+                />
               </section>
             )}
 
+            {kind === "Service" && (
             <section className="form-section">
               <div className="section-title with-action">
-                <span className="section-number">{kind === "Service" ? "02" : "03"}</span>
+                <span className="section-number">02</span>
                 <div>
-                  <h3>{kind === "Service" ? "Service ports" : "Container ports"}</h3>
+                  <h3>Service ports</h3>
                   <p>Expose named endpoints with an explicit protocol.</p>
                 </div>
                 <button
                   className="text-action"
                   type="button"
                   onClick={() =>
-                    setPorts((current) => [
+                    setServicePorts((current) => [
                       ...current,
                       {
                         id: Date.now(),
@@ -518,41 +775,39 @@ export default function Home() {
                     ])
                   }
                 >
-                  <span aria-hidden="true">＋</span>Add port
+                  <span aria-hidden="true">＋</span>Add service port
                 </button>
               </div>
 
               <div className="repeat-list">
-                {ports.map((port, index) => (
+                {servicePorts.map((port, index) => (
                   <div className="repeat-row" key={port.id}>
                     <div className="repeat-index">{String(index + 1).padStart(2, "0")}</div>
-                    <Field label="Name" value={port.name} onChange={(value) => updatePort(port.id, { name: value })} />
+                    <Field label="Name" value={port.name} onChange={(value) => updateServicePort(port.id, { name: value })} />
                     <Field
-                      label={kind === "Service" ? "Service port" : "Container port"}
+                      label="Service port"
                       value={port.port}
-                      onChange={(value) => updatePort(port.id, { port: value })}
+                      onChange={(value) => updateServicePort(port.id, { port: value })}
                       type="number"
                     />
-                    {kind === "Service" && (
-                      <Field
-                        label="Target port"
-                        value={port.targetPort}
-                        onChange={(value) => updatePort(port.id, { targetPort: value })}
-                        type="number"
-                      />
-                    )}
+                    <Field
+                      label="Target port"
+                      value={port.targetPort}
+                      onChange={(value) => updateServicePort(port.id, { targetPort: value })}
+                      type="number"
+                    />
                     <SelectField
                       label="Protocol"
                       value={port.protocol}
-                      onChange={(value) => updatePort(port.id, { protocol: value as Protocol })}
+                      onChange={(value) => updateServicePort(port.id, { protocol: value as Protocol })}
                       options={["TCP", "UDP", "SCTP"].map((item) => ({ value: item, label: item }))}
                     />
                     <button
                       type="button"
                       className="remove-button"
                       aria-label={`Remove port ${index + 1}`}
-                      onClick={() => setPorts((current) => current.filter((item) => item.id !== port.id))}
-                      disabled={ports.length === 1}
+                      onClick={() => setServicePorts((current) => current.filter((item) => item.id !== port.id))}
+                      disabled={servicePorts.length === 1}
                     >
                       ×
                     </button>
@@ -560,12 +815,13 @@ export default function Home() {
                 ))}
               </div>
             </section>
+            )}
 
             {kind !== "Service" && (
               <section className="form-section">
                 <div className="section-title with-action">
-                  <span className="section-number">04</span>
-                  <div><h3>Volumes</h3><p>Attach storage and configuration to the container.</p></div>
+                  <span className="section-number">03</span>
+                  <div><h3>Volumes</h3><p>Attach storage and configuration to selected containers.</p></div>
                   <button
                     className="text-action"
                     type="button"
@@ -579,6 +835,7 @@ export default function Home() {
                           source: "",
                           mountPath: "/data",
                           readOnly: false,
+                          containerIds: [],
                         },
                       ])
                     }
@@ -618,7 +875,16 @@ export default function Home() {
                           onChange={(value) => updateVolume(volume.id, { source: value })}
                           placeholder={volume.type === "emptyDir" ? "1Gi (optional)" : "Existing object name"}
                         />
-                        <Field label="Mount path" value={volume.mountPath} onChange={(value) => updateVolume(volume.id, { mountPath: value })} />
+                        <Field
+                          label="Mount path inside container"
+                          value={volume.mountPath}
+                          onChange={(value) => updateVolume(volume.id, { mountPath: value })}
+                        />
+                        <ContainerMultiSelect
+                          containers={containers}
+                          selectedIds={volume.containerIds}
+                          onChange={(containerIds) => updateVolume(volume.id, { containerIds })}
+                        />
                       </div>
                       <label className="check-field">
                         <input
