@@ -292,7 +292,9 @@ summary:focus-visible {
   height: 41px;
   margin-bottom: -1px;
   background: #fff;
-  box-shadow: 0 -1px 3px rgba(16, 24, 40, 0.08);
+  box-shadow:
+    0 -1px 3px rgba(16, 24, 40, 0.08),
+    0 2px 0 #fff;
 }
 
 .resource-tab-select {
