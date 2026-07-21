@@ -260,8 +260,8 @@ summary:focus-visible {
 
 .resource-tab {
   position: relative;
-  min-width: 128px;
-  max-width: 190px;
+  min-width: 175px;
+  max-width: 235px;
   height: 40px;
   display: flex;
   align-items: stretch;
@@ -306,8 +306,8 @@ summary:focus-visible {
 }
 
 .resource-tab-select > b {
-  width: 18px;
   height: 18px;
+  padding: 0 7px;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
@@ -316,6 +316,7 @@ summary:focus-visible {
   background: var(--blue);
   font-size: 9px;
   font-weight: 750;
+  white-space: nowrap;
 }
 
 .resource-tab-select > span {

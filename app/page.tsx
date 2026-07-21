@@ -712,7 +712,7 @@ export default function Home() {
                       title={`${resource.kind}: ${resource.name || `Resource ${index + 1}`}`}
                       onClick={() => setActiveResourceId(resource.id)}
                     >
-                      <b aria-hidden="true">{resource.kind.slice(0, 1)}</b>
+                      <b aria-hidden="true">{resource.kind}</b>
                       <span>{resource.name || `Resource ${index + 1}`}</span>
                       {tabErrorCount > 0 && <i title={`${tabErrorCount} validation errors`} />}
                     </button>
