@@ -277,10 +277,10 @@ function SelectField({
 export default function Home() {
   const [version, setVersion] = useState("1.35");
   const [kind, setKind] = useState<ResourceKind>("Deployment");
-  const [name, setName] = useState("checkout-api");
+  const [name, setName] = useState("example");
   const [namespace, setNamespace] = useState("production");
-  const [labels, setLabels] = useState("app=checkout-api, tier=backend");
-  const [replicas, setReplicas] = useState("3");
+  const [labels, setLabels] = useState("app=example");
+  const [replicas, setReplicas] = useState("1");
   const [serviceAccount, setServiceAccount] = useState("default");
   const [securityExpanded, setSecurityExpanded] = useState(false);
   const [restartPolicy, setRestartPolicy] = useState("Always");
@@ -1227,9 +1227,6 @@ export default function Home() {
             <span>YAML</span>
             <span>{manifestLines.length - 1} lines</span>
             <span>Spaces: 2</span>
-            <span className={isManifestValid ? "footer-ready" : "footer-invalid"}>
-              <i />{isManifestValid ? "Ready to apply" : "Fix validation errors"}
-            </span>
           </div>
         </aside>
       </section>

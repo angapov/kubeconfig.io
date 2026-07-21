@@ -877,36 +877,6 @@ summary:focus-visible {
   font-size: 10px;
 }
 
-.footer-ready {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #83e2b0;
-}
-
-.footer-ready i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #17b26a;
-}
-
-.footer-invalid {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #fda29b;
-}
-
-.footer-invalid i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #f04438;
-}
-
 @media (max-width: 1220px) {
   .workspace {
     grid-template-columns: minmax(0, 1fr) minmax(430px, 0.9fr);
