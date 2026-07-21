@@ -169,12 +169,14 @@ export function validateManifestFields(input: ValidationInput) {
     errors.name = "CronJob name must be 52 characters or fewer.";
   }
   if (input.kind !== "PersistentVolume") {
-    add("namespace", validateDnsName(input.namespace, "Namespace", true));
-  }
-  if (kindUsesLabels(input.kind)) {
-    if (input.labels.length === 0) {
-      errors.labels = "Add at least one label.";
+    if (input.namespace.trim()) {
+      add("namespace", validateDnsName(input.namespace, "Namespace", true));
     }
+  }
+  if (kindUsesLabels(input.kind) && input.labels.length === 0) {
+    errors.labels = "Add at least one label.";
+  }
+  if (input.labels.length > 0) {
     const labelKeys = new Set<string>();
     input.labels.forEach((label) => {
       const key = label.key.trim();

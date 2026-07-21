@@ -126,6 +126,10 @@ function kindUsesLabels(kind: ResourceKind) {
   return kind === "Pod" || kind === "Deployment" || kind === "Service";
 }
 
+function isDefaultLabelSet(labels: LabelField[]) {
+  return labels.length === 1 && labels[0].key === "app" && labels[0].value === "example";
+}
+
 function createDefaultLabel(id = Date.now()): LabelField {
   return { id, key: "app", value: "example" };
 }
@@ -225,8 +229,8 @@ function createDefaultResource(id: number): ResourceState {
   return {
     id,
     kind: "Deployment",
-    name: "example",
-    namespace: "production",
+    name: "",
+    namespace: "",
     labels: [createDefaultLabel(1)],
     replicas: "1",
     completions: "1",
@@ -240,7 +244,7 @@ function createDefaultResource(id: number): ResourceState {
     serviceType: "ClusterIP",
     routeHost: "",
     routePath: "",
-    routeServiceName: "example",
+    routeServiceName: "",
     routeTargetPort: "http",
     routeTlsEnabled: false,
     routeTlsTermination: "edge",
@@ -333,10 +337,10 @@ function buildResourceManifest(resourceState: ResourceState) {
     volumes,
   } = resourceState;
   const parsedLabels = parseLabels(labels);
-  const resourceLabels = kindUsesLabels(kind) ? parsedLabels : undefined;
+  const resourceLabels = Object.keys(parsedLabels).length > 0 ? parsedLabels : undefined;
   const metadata: YamlObject = {
-    name: name || "untitled",
-    namespace: kind === "PersistentVolume" ? undefined : namespace || "default",
+    name: name.trim() || undefined,
+    namespace: kind === "PersistentVolume" ? undefined : namespace.trim() || undefined,
     labels: resourceLabels,
   };
 
@@ -781,6 +785,8 @@ export default function Home() {
               labels:
                 kindUsesLabels(nextKind) && resource.labels.length === 0
                   ? [createDefaultLabel()]
+                  : !kindUsesLabels(nextKind) && isDefaultLabelSet(resource.labels)
+                    ? []
                   : resource.labels,
               restartPolicy:
                 (nextKind === "Job" || nextKind === "CronJob") && resource.restartPolicy === "Always"
@@ -1064,14 +1070,14 @@ export default function Home() {
               <div className="section-title">
                 <span className="section-number">01</span>
                 <div>
-                  <h3>{isStorageResource ? "Storage resource" : "Workload"}</h3>
+                  <h3>{isStorageResource ? "Storage resource" : "Object spec"}</h3>
                   <p>Name and identify the {platform} object.</p>
                 </div>
                 <code>{apiVersion}</code>
               </div>
               <div className="field-grid two-col">
                 <SelectField
-                  label="Object type"
+                  label="Kind"
                   value={kind}
                   onChange={(value) => changeResourceKind(value as ResourceKind)}
                   required
@@ -1168,65 +1174,62 @@ export default function Home() {
                   />
                 )}
               </div>
-              {kindUsesLabels(kind) && (
-                <div className="labels-editor">
-                  <div className="labels-editor-heading">
-                    <div>
-                      <strong>
-                        Labels<span className="required"> *</span>
-                      </strong>
-                      <span>Used by selectors for Pods, Deployments, and Services.</span>
-                    </div>
-                    <button
-                      className="text-action"
-                      type="button"
-                      onClick={() =>
-                        setLabels((current) => [
-                          ...current,
-                          { id: Date.now(), key: "", value: "" },
-                        ])
-                      }
-                    >
-                      <span aria-hidden="true">＋</span>Add label
-                    </button>
+              <div className="labels-editor">
+                <div className="labels-editor-heading">
+                  <div>
+                    <strong>
+                      Labels{kindUsesLabels(kind) && <span className="required"> *</span>}
+                    </strong>
                   </div>
-                  <div className="labels-list">
-                    {labels.map((label, index) => (
-                      <div className="label-row" key={label.id}>
-                        <Field
-                          label="Key"
-                          value={label.key}
-                          onChange={(value) => updateLabel(label.id, { key: value })}
-                          placeholder="app"
-                          required
-                          error={validationErrors[`label-key-${label.id}`]}
-                        />
-                        <Field
-                          label="Value"
-                          value={label.value}
-                          onChange={(value) => updateLabel(label.id, { value })}
-                          placeholder="example"
-                          required
-                          error={validationErrors[`label-value-${label.id}`]}
-                        />
-                        <button
-                          type="button"
-                          className="remove-button"
-                          aria-label={`Remove label ${index + 1}`}
-                          onClick={() =>
-                            setLabels((current) => current.filter((item) => item.id !== label.id))
-                          }
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  {validationErrors.labels && (
-                    <span className="field-error">{validationErrors.labels}</span>
-                  )}
+                  <button
+                    className="text-action"
+                    type="button"
+                    onClick={() =>
+                      setLabels((current) => [
+                        ...current,
+                        { id: Date.now(), key: "", value: "" },
+                      ])
+                    }
+                  >
+                    <span aria-hidden="true">＋</span>Add label
+                  </button>
                 </div>
-              )}
+                <div className="labels-list">
+                  {labels.map((label, index) => (
+                    <div className="label-row" key={label.id}>
+                      <Field
+                        label="Key"
+                        value={label.key}
+                        onChange={(value) => updateLabel(label.id, { key: value })}
+                        placeholder="app"
+                        required
+                        error={validationErrors[`label-key-${label.id}`]}
+                      />
+                      <Field
+                        label="Value"
+                        value={label.value}
+                        onChange={(value) => updateLabel(label.id, { value })}
+                        placeholder="example"
+                        required
+                        error={validationErrors[`label-value-${label.id}`]}
+                      />
+                      <button
+                        type="button"
+                        className="remove-button"
+                        aria-label={`Remove label ${index + 1}`}
+                        onClick={() =>
+                          setLabels((current) => current.filter((item) => item.id !== label.id))
+                        }
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {validationErrors.labels && (
+                  <span className="field-error">{validationErrors.labels}</span>
+                )}
+              </div>
             </section>
 
             {isStorageResource && (
