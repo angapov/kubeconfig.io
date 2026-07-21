@@ -245,7 +245,6 @@ summary:focus-visible {
   align-items: flex-end;
   justify-content: space-between;
   gap: 14px;
-  border-bottom: 1px solid var(--line);
   background: #e8edf3;
 }
 
@@ -289,12 +288,8 @@ summary:focus-visible {
 
 .resource-tab.active {
   z-index: 1;
-  height: 41px;
-  margin-bottom: -1px;
   background: #fff;
-  box-shadow:
-    0 -1px 3px rgba(16, 24, 40, 0.08),
-    0 2px 0 #fff;
+  box-shadow: 0 -1px 3px rgba(16, 24, 40, 0.08);
 }
 
 .resource-tab-select {
