@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState, type SetStateAction } from "react";
 import { validateManifestFields } from "./validation";
 
-type ResourceKind = "Deployment" | "Pod" | "Service";
+type ResourceKind = "Deployment" | "Pod" | "Service" | "Job" | "CronJob";
 type Protocol = "TCP" | "UDP" | "SCTP";
 type VolumeType = "emptyDir" | "configMap" | "secret" | "persistentVolumeClaim";
 
@@ -50,6 +50,11 @@ type ResourceState = {
   namespace: string;
   labels: string;
   replicas: string;
+  completions: string;
+  parallelism: string;
+  backoffLimit: string;
+  schedule: string;
+  concurrencyPolicy: string;
   serviceAccount: string;
   securityExpanded: boolean;
   restartPolicy: string;
@@ -174,6 +179,11 @@ function createDefaultResource(id: number): ResourceState {
     namespace: "production",
     labels: "app=example",
     replicas: "1",
+    completions: "1",
+    parallelism: "1",
+    backoffLimit: "6",
+    schedule: "*/5 * * * *",
+    concurrencyPolicy: "Allow",
     serviceAccount: "default",
     securityExpanded: false,
     restartPolicy: "Always",
@@ -208,6 +218,9 @@ function createDefaultResource(id: number): ResourceState {
 
 function buildResourceManifest(resourceState: ResourceState) {
   const {
+    backoffLimit,
+    completions,
+    concurrencyPolicy,
     containers,
     kind,
     labels,
@@ -215,10 +228,12 @@ function buildResourceManifest(resourceState: ResourceState) {
     namespace,
     replicas,
     restartPolicy,
+    schedule,
     securityExpanded,
     serviceAccount,
     servicePorts,
     serviceType,
+    parallelism,
     volumes,
   } = resourceState;
   const parsedLabels = parseLabels(labels, name);
@@ -310,27 +325,56 @@ function buildResourceManifest(resourceState: ResourceState) {
       volumes: volumeSpecs,
     };
 
-    resource =
-      kind === "Pod"
-        ? {
-            apiVersion: "v1",
-            kind: "Pod",
-            metadata,
+    const jobSpec: YamlObject = {
+      completions: Number(completions),
+      parallelism: Number(parallelism),
+      backoffLimit: Number(backoffLimit),
+      template: {
+        metadata: { labels: parsedLabels },
+        spec: podSpec,
+      },
+    };
+
+    if (kind === "Pod") {
+      resource = {
+        apiVersion: "v1",
+        kind: "Pod",
+        metadata,
+        spec: podSpec,
+      };
+    } else if (kind === "Job") {
+      resource = {
+        apiVersion: "batch/v1",
+        kind: "Job",
+        metadata,
+        spec: jobSpec,
+      };
+    } else if (kind === "CronJob") {
+      resource = {
+        apiVersion: "batch/v1",
+        kind: "CronJob",
+        metadata,
+        spec: {
+          schedule,
+          concurrencyPolicy,
+          jobTemplate: { spec: jobSpec },
+        },
+      };
+    } else {
+      resource = {
+        apiVersion: "apps/v1",
+        kind: "Deployment",
+        metadata,
+        spec: {
+          replicas: Number(replicas) || 1,
+          selector: { matchLabels: parsedLabels },
+          template: {
+            metadata: { labels: parsedLabels },
             spec: podSpec,
-          }
-        : {
-            apiVersion: "apps/v1",
-            kind: "Deployment",
-            metadata,
-            spec: {
-              replicas: Number(replicas) || 1,
-              selector: { matchLabels: parsedLabels },
-              template: {
-                metadata: { labels: parsedLabels },
-                spec: podSpec,
-              },
-            },
-          };
+          },
+        },
+      };
+    }
   }
 
   return `${toYaml(resource).join("\n")}\n`;
@@ -415,6 +459,9 @@ export default function Home() {
   const activeResource =
     resources.find((resource) => resource.id === activeResourceId) ?? resources[0];
   const {
+    backoffLimit,
+    completions,
+    concurrencyPolicy,
     containers,
     kind,
     labels,
@@ -422,10 +469,12 @@ export default function Home() {
     namespace,
     replicas,
     restartPolicy,
+    schedule,
     securityExpanded,
     serviceAccount,
     servicePorts,
     serviceType,
+    parallelism,
     volumes,
   } = activeResource;
 
@@ -445,11 +494,15 @@ export default function Home() {
     );
   }
 
-  const setKind = (value: SetStateAction<ResourceKind>) => setResourceField("kind", value);
   const setName = (value: SetStateAction<string>) => setResourceField("name", value);
   const setNamespace = (value: SetStateAction<string>) => setResourceField("namespace", value);
   const setLabels = (value: SetStateAction<string>) => setResourceField("labels", value);
   const setReplicas = (value: SetStateAction<string>) => setResourceField("replicas", value);
+  const setCompletions = (value: SetStateAction<string>) => setResourceField("completions", value);
+  const setParallelism = (value: SetStateAction<string>) => setResourceField("parallelism", value);
+  const setBackoffLimit = (value: SetStateAction<string>) => setResourceField("backoffLimit", value);
+  const setSchedule = (value: SetStateAction<string>) => setResourceField("schedule", value);
+  const setConcurrencyPolicy = (value: SetStateAction<string>) => setResourceField("concurrencyPolicy", value);
   const setServiceAccount = (value: SetStateAction<string>) => setResourceField("serviceAccount", value);
   const setSecurityExpanded = (value: SetStateAction<boolean>) => setResourceField("securityExpanded", value);
   const setRestartPolicy = (value: SetStateAction<string>) => setResourceField("restartPolicy", value);
@@ -457,6 +510,23 @@ export default function Home() {
   const setContainers = (value: SetStateAction<ContainerField[]>) => setResourceField("containers", value);
   const setServicePorts = (value: SetStateAction<PortField[]>) => setResourceField("servicePorts", value);
   const setVolumes = (value: SetStateAction<VolumeField[]>) => setResourceField("volumes", value);
+
+  function changeResourceKind(nextKind: ResourceKind) {
+    setResources((current) =>
+      current.map((resource) =>
+        resource.id === activeResourceId
+          ? {
+              ...resource,
+              kind: nextKind,
+              restartPolicy:
+                (nextKind === "Job" || nextKind === "CronJob") && resource.restartPolicy === "Always"
+                  ? "Never"
+                  : resource.restartPolicy,
+            }
+          : resource,
+      ),
+    );
+  }
 
   const validationByResource = useMemo(
     () =>
@@ -578,7 +648,8 @@ export default function Home() {
     URL.revokeObjectURL(url);
   }
 
-  const apiVersion = kind === "Deployment" ? "apps/v1" : "v1";
+  const apiVersion =
+    kind === "Deployment" ? "apps/v1" : kind === "Job" || kind === "CronJob" ? "batch/v1" : "v1";
   const manifestFileName = resources.length > 1 ? "kubernetes-resources.yaml" : `${name || kind.toLowerCase()}.yaml`;
   const manifestLines = manifest.split("\n");
 
@@ -682,11 +753,13 @@ export default function Home() {
                 <SelectField
                   label="Object type"
                   value={kind}
-                  onChange={(value) => setKind(value as ResourceKind)}
+                  onChange={(value) => changeResourceKind(value as ResourceKind)}
                   required
                   options={[
                     { value: "Deployment", label: "Deployment" },
                     { value: "Pod", label: "Pod" },
+                    { value: "Job", label: "Job" },
+                    { value: "CronJob", label: "CronJob" },
                     { value: "Service", label: "Service" },
                   ]}
                 />
@@ -708,6 +781,58 @@ export default function Home() {
                     onChange={setRestartPolicy}
                     options={["Always", "OnFailure", "Never"].map((item) => ({ value: item, label: item }))}
                   />
+                )}
+                {kind === "CronJob" && (
+                  <>
+                    <Field
+                      label="Schedule"
+                      value={schedule}
+                      onChange={setSchedule}
+                      placeholder="*/5 * * * *"
+                      required
+                      error={validationErrors.schedule}
+                    />
+                    <SelectField
+                      label="Concurrency policy"
+                      value={concurrencyPolicy}
+                      onChange={setConcurrencyPolicy}
+                      options={["Allow", "Forbid", "Replace"].map((item) => ({ value: item, label: item }))}
+                    />
+                  </>
+                )}
+                {(kind === "Job" || kind === "CronJob") && (
+                  <>
+                    <Field
+                      label="Completions"
+                      value={completions}
+                      onChange={setCompletions}
+                      type="number"
+                      required
+                      error={validationErrors.completions}
+                    />
+                    <Field
+                      label="Parallelism"
+                      value={parallelism}
+                      onChange={setParallelism}
+                      type="number"
+                      required
+                      error={validationErrors.parallelism}
+                    />
+                    <Field
+                      label="Backoff limit"
+                      value={backoffLimit}
+                      onChange={setBackoffLimit}
+                      type="number"
+                      required
+                      error={validationErrors.backoffLimit}
+                    />
+                    <SelectField
+                      label="Restart policy"
+                      value={restartPolicy}
+                      onChange={setRestartPolicy}
+                      options={["Never", "OnFailure"].map((item) => ({ value: item, label: item }))}
+                    />
+                  </>
                 )}
                 {kind === "Service" && (
                   <SelectField

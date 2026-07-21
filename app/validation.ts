@@ -1,4 +1,4 @@
-type ResourceKind = "Deployment" | "Pod" | "Service";
+type ResourceKind = "Deployment" | "Pod" | "Service" | "Job" | "CronJob";
 
 type PortInput = {
   id: number;
@@ -32,6 +32,10 @@ type ValidationInput = {
   namespace: string;
   labels: string;
   replicas: string;
+  completions: string;
+  parallelism: string;
+  backoffLimit: string;
+  schedule: string;
   securityExpanded: boolean;
   serviceAccount: string;
   servicePorts: PortInput[];
@@ -60,6 +64,14 @@ function validatePort(value: string, label: string, required = true) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
     return `${label} must be an integer from 1 to 65535.`;
+  }
+  return undefined;
+}
+
+function validateNonNegativeInteger(value: string, label: string) {
+  const parsed = Number(value);
+  if (!value.trim() || !Number.isInteger(parsed) || parsed < 0) {
+    return `${label} must be a non-negative integer.`;
   }
   return undefined;
 }
@@ -102,6 +114,9 @@ export function validateManifestFields(input: ValidationInput) {
   };
 
   add("name", validateDnsName(input.name, `${input.kind} name`, input.kind === "Service"));
+  if (input.kind === "CronJob" && input.name.length > 52) {
+    errors.name = "CronJob name must be 52 characters or fewer.";
+  }
   add("namespace", validateDnsName(input.namespace, "Namespace", true));
   add("labels", validateLabels(input.labels));
 
@@ -110,6 +125,16 @@ export function validateManifestFields(input: ValidationInput) {
     if (!Number.isInteger(replicaCount) || replicaCount < 0) {
       errors.replicas = "Replicas must be a non-negative integer.";
     }
+  }
+
+  if (input.kind === "Job" || input.kind === "CronJob") {
+    add("completions", validateNonNegativeInteger(input.completions, "Completions"));
+    add("parallelism", validateNonNegativeInteger(input.parallelism, "Parallelism"));
+    add("backoffLimit", validateNonNegativeInteger(input.backoffLimit, "Backoff limit"));
+  }
+
+  if (input.kind === "CronJob" && !input.schedule.trim()) {
+    errors.schedule = "Schedule is required.";
   }
 
   if (input.kind === "Service") {
