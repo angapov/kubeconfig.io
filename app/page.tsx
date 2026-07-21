@@ -84,7 +84,6 @@ type ResourceState = {
   concurrencyPolicy: string;
   serviceAccount: string;
   serviceAccountEnabled: boolean;
-  securityExpanded: boolean;
   restartPolicy: string;
   serviceType: string;
   routeHost: string;
@@ -333,7 +332,6 @@ function createDefaultResource(id: number): ResourceState {
     concurrencyPolicy: "Allow",
     serviceAccount: "",
     serviceAccountEnabled: false,
-    securityExpanded: false,
     restartPolicy: "Always",
     serviceType: "ClusterIP",
     routeHost: "",
@@ -752,7 +750,6 @@ export default function Home() {
     routeTlsEnabled,
     routeTlsTermination,
     schedule,
-    securityExpanded,
     serviceAccount,
     serviceAccountEnabled,
     servicePorts,
@@ -805,7 +802,6 @@ export default function Home() {
   const setServiceAccount = (value: SetStateAction<string>) => setResourceField("serviceAccount", value);
   const setServiceAccountEnabled = (value: SetStateAction<boolean>) =>
     setResourceField("serviceAccountEnabled", value);
-  const setSecurityExpanded = (value: SetStateAction<boolean>) => setResourceField("securityExpanded", value);
   const setRestartPolicy = (value: SetStateAction<string>) => setResourceField("restartPolicy", value);
   const setServiceType = (value: SetStateAction<string>) => setResourceField("serviceType", value);
   const setRouteHost = (value: SetStateAction<string>) => setResourceField("routeHost", value);
@@ -2031,57 +2027,50 @@ export default function Home() {
             )}
 
             {hasPodSpec && (
-              <section className="form-section collapsible-form-section">
-                <details
-                  className="security-section"
-                  open={securityExpanded}
-                  onToggle={(event) => setSecurityExpanded(event.currentTarget.open)}
-                >
-                  <summary>
-                    <span className="section-number">04</span>
-                    <div>
-                      <h3>Security</h3>
-                      <p>Configure workload security settings.</p>
-                    </div>
-                    <span className="disclosure-icon" aria-hidden="true">⌄</span>
-                  </summary>
-                  <div className="security-content">
-                    {!serviceAccountEnabled ? (
-                      <button
-                        className="text-action security-add-action"
-                        type="button"
-                        onClick={() => setServiceAccountEnabled(true)}
-                      >
-                        <span aria-hidden="true">＋</span>Add ServiceAccount
-                      </button>
-                    ) : (
-                      <div className="security-item">
-                        <div className="security-item-heading">
-                          <strong>ServiceAccount</strong>
-                          <button
-                            className="remove-button"
-                            type="button"
-                            aria-label="Remove ServiceAccount"
-                            onClick={() => {
-                              setServiceAccountEnabled(false);
-                              setServiceAccount("");
-                            }}
-                          >
-                            ×
-                          </button>
-                        </div>
-                        <Field
-                          label="Service account name"
-                          value={serviceAccount}
-                          onChange={setServiceAccount}
-                          hint="Must exist in the selected namespace."
-                          required
-                          error={validationErrors["service-account"]}
-                        />
-                      </div>
-                    )}
+              <section className="form-section">
+                <div className="section-title">
+                  <span className="section-number">04</span>
+                  <div>
+                    <h3>Security</h3>
+                    <p>Configure workload security settings.</p>
                   </div>
-                </details>
+                </div>
+                <div className="security-content">
+                  {!serviceAccountEnabled ? (
+                    <button
+                      className="text-action security-add-action"
+                      type="button"
+                      onClick={() => setServiceAccountEnabled(true)}
+                    >
+                      <span aria-hidden="true">＋</span>Add ServiceAccount
+                    </button>
+                  ) : (
+                    <div className="security-item">
+                      <div className="security-item-heading">
+                        <strong>ServiceAccount</strong>
+                        <button
+                          className="remove-button"
+                          type="button"
+                          aria-label="Remove ServiceAccount"
+                          onClick={() => {
+                            setServiceAccountEnabled(false);
+                            setServiceAccount("");
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <Field
+                        label="Service account name"
+                        value={serviceAccount}
+                        onChange={setServiceAccount}
+                        hint="Must exist in the selected namespace."
+                        required
+                        error={validationErrors["service-account"]}
+                      />
+                    </div>
+                  )}
+                </div>
               </section>
             )}
 

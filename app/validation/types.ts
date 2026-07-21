@@ -70,7 +70,6 @@ export type ValidationInput = {
   pvNfsPath: string;
   pvCsiDriver: string;
   pvCsiVolumeHandle: string;
-  securityExpanded: boolean;
   serviceAccount: string;
   serviceAccountEnabled: boolean;
   servicePorts: PortInput[];

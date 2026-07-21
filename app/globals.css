@@ -529,12 +529,12 @@ summary:focus-visible {
   border-bottom: 1px solid var(--line);
 }
 
-.form-section:not(.collapsible-form-section) {
+.form-section {
   display: grid;
   gap: 18px;
 }
 
-.form-section:not(.collapsible-form-section) > * {
+.form-section > * {
   margin-top: 0;
   margin-bottom: 0;
 }
@@ -946,56 +946,8 @@ summary:focus-visible {
   accent-color: var(--blue);
 }
 
-.collapsible-form-section {
-  padding: 0;
-}
-
-.security-section summary {
-  min-height: 89px;
-  padding: 20px 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-  list-style: none;
-}
-
-.security-section summary::-webkit-details-marker {
-  display: none;
-}
-
-.security-section summary > div {
-  flex: 1;
-}
-
-.security-section summary h3,
-.security-section summary p {
-  margin: 0;
-}
-
-.security-section summary h3 {
-  font-size: 15px;
-  letter-spacing: -0.015em;
-}
-
-.security-section summary p {
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.disclosure-icon {
-  color: var(--muted);
-  font-size: 18px;
-  transition: transform 150ms ease;
-}
-
-.security-section[open] .disclosure-icon {
-  transform: rotate(180deg);
-}
-
 .security-content {
-  padding: 0 50px 22px;
+  padding: 0 50px;
   display: grid;
   gap: 12px;
 }
