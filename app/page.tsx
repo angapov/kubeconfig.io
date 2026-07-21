@@ -7,6 +7,14 @@ type ResourceKind = "Deployment" | "Pod" | "Service" | "Job" | "CronJob";
 type Protocol = "TCP" | "UDP" | "SCTP";
 type VolumeType = "emptyDir" | "configMap" | "secret" | "persistentVolumeClaim";
 
+const RESOURCE_KIND_ABBREVIATIONS: Record<ResourceKind, string> = {
+  CronJob: "CJ",
+  Deployment: "D",
+  Pod: "P",
+  Job: "J",
+  Service: "S",
+};
+
 type PortField = {
   id: number;
   name: string;
@@ -712,7 +720,7 @@ export default function Home() {
                       title={`${resource.kind}: ${resource.name || `Resource ${index + 1}`}`}
                       onClick={() => setActiveResourceId(resource.id)}
                     >
-                      <b aria-hidden="true">{resource.kind}</b>
+                      <b aria-hidden="true">{RESOURCE_KIND_ABBREVIATIONS[resource.kind]}</b>
                       <span>{resource.name || `Resource ${index + 1}`}</span>
                       {tabErrorCount > 0 && <i title={`${tabErrorCount} validation errors`} />}
                     </button>
