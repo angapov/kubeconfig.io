@@ -49,6 +49,16 @@ interface YamlObject {
 
 const VERSION_OPTIONS = ["1.35", "1.34", "1.33"];
 
+function createDefaultPort(index: number, id = Date.now()): PortField {
+  if (index === 0) {
+    return { id, name: "http", port: "80", targetPort: "80", protocol: "TCP" };
+  }
+  if (index === 1) {
+    return { id, name: "https", port: "443", targetPort: "443", protocol: "TCP" };
+  }
+  return { id, name: "", port: "", targetPort: "", protocol: "TCP" };
+}
+
 function isPlainObject(value: unknown): value is YamlObject {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -206,8 +216,8 @@ export default function Home() {
   const [containers, setContainers] = useState<ContainerField[]>([
     {
       id: 1,
-      name: "api",
-      image: "ghcr.io/acme/checkout:2.4.1",
+      name: "container-1",
+      image: "nginx:latest",
       pullPolicy: "IfNotPresent",
       ports: [],
       resourcesEnabled: false,
@@ -218,7 +228,7 @@ export default function Home() {
     },
   ]);
   const [servicePorts, setServicePorts] = useState<PortField[]>([
-    { id: 1, name: "http", port: "80", targetPort: "8080", protocol: "TCP" },
+    createDefaultPort(0, 1),
   ]);
   const [volumes, setVolumes] = useState<VolumeField[]>([
     {
@@ -264,11 +274,13 @@ export default function Home() {
       name: container.name || "app",
       image: container.image || "nginx:latest",
       imagePullPolicy: container.pullPolicy,
-      ports: container.ports.map((port) => ({
-        name: port.name || undefined,
-        containerPort: Number(port.port) || 80,
-        protocol: port.protocol,
-      })),
+      ports: container.ports
+        .filter((port) => port.port.trim() !== "")
+        .map((port) => ({
+          name: port.name || undefined,
+          containerPort: Number(port.port),
+          protocol: port.protocol,
+        })),
       resources: container.resourcesEnabled
         ? {
             requests: {
@@ -303,12 +315,14 @@ export default function Home() {
         spec: {
           type: serviceType,
           selector: parsedLabels,
-          ports: servicePorts.map((port) => ({
-            name: port.name || undefined,
-            port: Number(port.port) || 80,
-            targetPort: Number(port.targetPort) || Number(port.port) || 80,
-            protocol: port.protocol,
-          })),
+          ports: servicePorts
+            .filter((port) => port.port.trim() !== "")
+            .map((port) => ({
+              name: port.name || undefined,
+              port: Number(port.port),
+              targetPort: Number(port.targetPort) || Number(port.port),
+              protocol: port.protocol,
+            })),
         },
       };
     } else {
@@ -611,13 +625,7 @@ export default function Home() {
                             updateContainer(container.id, {
                               ports: [
                                 ...container.ports,
-                                {
-                                  id: Date.now(),
-                                  name: `port-${container.ports.length + 1}`,
-                                  port: "8080",
-                                  targetPort: "8080",
-                                  protocol: "TCP",
-                                },
+                                createDefaultPort(container.ports.length),
                               ],
                             })
                           }
@@ -647,7 +655,6 @@ export default function Home() {
                         <div className="repeat-list">
                           {container.ports.map((port, portIndex) => (
                             <div className="repeat-row container-port-row" key={port.id}>
-                              <div className="repeat-index">{String(portIndex + 1).padStart(2, "0")}</div>
                               <Field
                                 label="Name"
                                 value={port.name}
@@ -763,13 +770,7 @@ export default function Home() {
                   onClick={() =>
                     setServicePorts((current) => [
                       ...current,
-                      {
-                        id: Date.now(),
-                        name: `port-${current.length + 1}`,
-                        port: "8080",
-                        targetPort: "8080",
-                        protocol: "TCP",
-                      },
+                      createDefaultPort(current.length),
                     ])
                   }
                 >
@@ -779,8 +780,7 @@ export default function Home() {
 
               <div className="repeat-list">
                 {servicePorts.map((port, index) => (
-                  <div className="repeat-row" key={port.id}>
-                    <div className="repeat-index">{String(index + 1).padStart(2, "0")}</div>
+                  <div className="repeat-row service-port-row" key={port.id}>
                     <Field label="Name" value={port.name} onChange={(value) => updateServicePort(port.id, { name: value })} />
                     <Field
                       label="Service port"
@@ -916,9 +916,6 @@ export default function Home() {
                         <div className="mount-point-list">
                           {volume.mountPoints.map((mountPoint, mountPointIndex) => (
                             <div className="mount-point-row" key={mountPoint.id}>
-                              <div className="repeat-index">
-                                {String(mountPointIndex + 1).padStart(2, "0")}
-                              </div>
                               <SelectField
                                 label="Container name"
                                 value={String(mountPoint.containerId)}

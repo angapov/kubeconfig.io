@@ -478,7 +478,7 @@ summary:focus-visible {
 
 .repeat-row {
   display: grid;
-  grid-template-columns: 36px minmax(110px, 1.2fr) minmax(105px, 0.85fr) minmax(105px, 0.85fr) 34px;
+  grid-template-columns: minmax(110px, 1.2fr) minmax(105px, 0.85fr) minmax(105px, 0.85fr) 34px;
   align-items: end;
   gap: 10px;
   padding: 15px;
@@ -487,17 +487,8 @@ summary:focus-visible {
   background: var(--surface-soft);
 }
 
-.repeat-row:has(.field:nth-of-type(4)) {
-  grid-template-columns: 36px minmax(100px, 1fr) repeat(3, minmax(100px, 0.75fr)) 34px;
-}
-
-.repeat-index {
-  height: 42px;
-  display: grid;
-  place-items: center;
-  color: var(--quiet);
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", ui-monospace, monospace;
-  font-size: 11px;
+.service-port-row {
+  grid-template-columns: minmax(100px, 1fr) repeat(3, minmax(100px, 0.75fr)) 34px;
 }
 
 .remove-button {
@@ -627,7 +618,7 @@ summary:focus-visible {
 
 .mount-point-row {
   display: grid;
-  grid-template-columns: 36px minmax(140px, 0.9fr) minmax(180px, 1.25fr) 34px;
+  grid-template-columns: minmax(140px, 0.9fr) minmax(180px, 1.25fr) 34px;
   align-items: end;
   gap: 10px;
   padding: 12px;
@@ -842,13 +833,13 @@ summary:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .repeat-row,
-  .repeat-row:has(.field:nth-of-type(4)) {
-    grid-template-columns: 32px repeat(2, minmax(110px, 1fr)) 34px;
+  .repeat-row {
+    grid-template-columns: repeat(2, minmax(110px, 1fr)) 34px;
   }
 
-  .repeat-row .field:nth-last-of-type(1) {
-    grid-column: 2;
+  .repeat-row .remove-button {
+    grid-column: 3;
+    grid-row: 1;
   }
 }
 
@@ -938,10 +929,6 @@ summary:focus-visible {
     grid-template-columns: 1fr 34px;
   }
 
-  .mount-point-row .repeat-index {
-    display: none;
-  }
-
   .mount-point-row .field {
     grid-column: 1;
   }
@@ -957,13 +944,8 @@ summary:focus-visible {
     border: 1px dashed #b7c9e2;
   }
 
-  .repeat-row,
-  .repeat-row:has(.field:nth-of-type(4)) {
+  .repeat-row {
     grid-template-columns: 1fr 34px;
-  }
-
-  .repeat-index {
-    display: none;
   }
 
   .repeat-row .field,
