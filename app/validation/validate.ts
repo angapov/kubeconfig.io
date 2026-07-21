@@ -4,7 +4,7 @@ import { validateJob } from "./job";
 import { validatePersistentVolume } from "./persistent-volume";
 import { validatePersistentVolumeClaim } from "./persistent-volume-claim";
 import { validatePod } from "./pod";
-import { validateRoute } from "./route";
+import { validateRoute } from "./openshift-route";
 import { validateService } from "./service";
 import type { ObjectValidator, ResourceKind, ValidationInput } from "./types";
 
