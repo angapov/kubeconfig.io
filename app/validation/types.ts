@@ -30,6 +30,33 @@ export type EnvironmentVariableInput = {
   sourceKey: string;
 };
 
+export type OptionalBooleanInput = "" | "true" | "false";
+export type SeccompProfileInput = "" | "RuntimeDefault" | "Unconfined" | "Localhost";
+
+export type PodSecurityContextInput = {
+  enabled: boolean;
+  runAsUser: string;
+  runAsGroup: string;
+  runAsNonRoot: OptionalBooleanInput;
+  fsGroup: string;
+  seccompProfileType: SeccompProfileInput;
+  seccompLocalhostProfile: string;
+};
+
+export type ContainerSecurityContextInput = {
+  enabled: boolean;
+  privileged: OptionalBooleanInput;
+  allowPrivilegeEscalation: OptionalBooleanInput;
+  readOnlyRootFilesystem: OptionalBooleanInput;
+  runAsUser: string;
+  runAsGroup: string;
+  runAsNonRoot: OptionalBooleanInput;
+  capabilitiesAdd: string;
+  capabilitiesDrop: string;
+  seccompProfileType: SeccompProfileInput;
+  seccompLocalhostProfile: string;
+};
+
 export type ContainerInput = {
   id: number;
   name: string;
@@ -43,6 +70,7 @@ export type ContainerInput = {
   memoryRequest: string;
   cpuLimit: string;
   memoryLimit: string;
+  securityContext: ContainerSecurityContextInput;
   ports: PortInput[];
 };
 
@@ -85,6 +113,7 @@ export type ValidationInput = {
   pvCsiVolumeHandle: string;
   serviceAccount: string;
   serviceAccountEnabled: boolean;
+  podSecurityContext: PodSecurityContextInput;
   servicePorts: PortInput[];
   containers: ContainerInput[];
   volumes: VolumeInput[];

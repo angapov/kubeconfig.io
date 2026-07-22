@@ -1021,6 +1021,52 @@ summary:focus-visible {
   text-transform: uppercase;
 }
 
+.security-item-heading > div,
+.security-group-heading {
+  display: grid;
+  gap: 3px;
+}
+
+.security-item-heading > div > span,
+.security-group-heading > span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.security-context-group {
+  display: grid;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.security-group-heading > strong {
+  color: #344054;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.security-container-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 14px;
+  border: 1px solid #d5e2f4;
+  border-radius: 11px;
+  background: var(--surface-soft);
+}
+
+.security-container-row > span {
+  min-width: 0;
+  overflow: hidden;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .mount-points-section {
   display: grid;
   gap: 12px;
@@ -1395,6 +1441,15 @@ summary:focus-visible {
   .security-content {
     padding-left: 0;
     padding-right: 0;
+  }
+
+  .security-container-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .security-container-row .text-action {
+    width: 100%;
   }
 
   .storage-add-action {

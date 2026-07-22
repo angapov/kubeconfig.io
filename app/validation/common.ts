@@ -7,6 +7,7 @@ const PORT_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const STORAGE_QUANTITY_PATTERN = /^\+?(?:\d+(?:\.\d+)?|\.\d+)(?:(?:[eE][+-]?\d+)|(?:[EPTGMk]i?)|m)?$/;
 const CPU_QUANTITY_PATTERN = /^\+?(?:\d+(?:\.\d+)?|\.\d+)(?:(?:[eE][+-]?\d+)|m)?$/;
 const MEMORY_QUANTITY_PATTERN = /^\+?(?:\d+(?:\.\d+)?|\.\d+)(?:(?:[eE][+-]?\d+)|Ei|Pi|Ti|Gi|Mi|Ki|E|P|T|G|M|k|m)?$/;
+const LINUX_CAPABILITY_PATTERN = /^[A-Z][A-Z0-9_]*$/;
 
 const MEMORY_MULTIPLIERS: Record<string, number> = {
   "": 1,
@@ -78,6 +79,33 @@ export function validateNonNegativeInteger(value: string, label: string) {
   if (!value.trim() || !Number.isInteger(parsed) || parsed < 0) {
     return `${label} must be a non-negative integer.`;
   }
+  return undefined;
+}
+
+function validateOptionalNonNegativeInteger(value: string, label: string) {
+  if (!value.trim()) return undefined;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    return `${label} must be a non-negative integer.`;
+  }
+  return undefined;
+}
+
+function validateCapabilities(value: string) {
+  const capabilities = value
+    .split(",")
+    .map((capability) => capability.trim())
+    .filter(Boolean);
+  if (capabilities.some((capability) => !LINUX_CAPABILITY_PATTERN.test(capability))) {
+    return "Use comma-separated uppercase capability names such as NET_ADMIN.";
+  }
+  return undefined;
+}
+
+function validateLocalhostProfile(type: string, profile: string) {
+  if (type !== "Localhost") return undefined;
+  if (!profile.trim()) return "Localhost profile is required.";
+  if (profile.startsWith("/")) return "Localhost profile must be a relative path.";
   return undefined;
 }
 
@@ -327,7 +355,74 @@ export function validatePodTemplate(input: ValidationInput, errors: ValidationEr
           "Memory limit must be greater than or equal to memory request.";
       }
     }
+
+    const securityContext = container.securityContext;
+    if (securityContext.enabled) {
+      addError(
+        errors,
+        `container-security-run-as-user-${container.id}`,
+        validateOptionalNonNegativeInteger(securityContext.runAsUser, "Run as user"),
+      );
+      addError(
+        errors,
+        `container-security-run-as-group-${container.id}`,
+        validateOptionalNonNegativeInteger(securityContext.runAsGroup, "Run as group"),
+      );
+      addError(
+        errors,
+        `container-security-capabilities-add-${container.id}`,
+        validateCapabilities(securityContext.capabilitiesAdd),
+      );
+      addError(
+        errors,
+        `container-security-capabilities-drop-${container.id}`,
+        validateCapabilities(securityContext.capabilitiesDrop),
+      );
+      addError(
+        errors,
+        `container-security-localhost-profile-${container.id}`,
+        validateLocalhostProfile(
+          securityContext.seccompProfileType,
+          securityContext.seccompLocalhostProfile,
+        ),
+      );
+      if (securityContext.runAsNonRoot === "true" && securityContext.runAsUser.trim() === "0") {
+        errors[`container-security-run-as-user-${container.id}`] =
+          "Run as user cannot be 0 when Run as non-root is true.";
+      }
+    }
   });
+
+  if (input.podSecurityContext.enabled) {
+    const securityContext = input.podSecurityContext;
+    addError(
+      errors,
+      "pod-security-run-as-user",
+      validateOptionalNonNegativeInteger(securityContext.runAsUser, "Run as user"),
+    );
+    addError(
+      errors,
+      "pod-security-run-as-group",
+      validateOptionalNonNegativeInteger(securityContext.runAsGroup, "Run as group"),
+    );
+    addError(
+      errors,
+      "pod-security-fs-group",
+      validateOptionalNonNegativeInteger(securityContext.fsGroup, "Filesystem group"),
+    );
+    addError(
+      errors,
+      "pod-security-localhost-profile",
+      validateLocalhostProfile(
+        securityContext.seccompProfileType,
+        securityContext.seccompLocalhostProfile,
+      ),
+    );
+    if (securityContext.runAsNonRoot === "true" && securityContext.runAsUser.trim() === "0") {
+      errors["pod-security-run-as-user"] =
+        "Run as user cannot be 0 when Run as non-root is true.";
+    }
+  }
 
   const volumeNames = new Set<string>();
   input.volumes.forEach((volume) => {

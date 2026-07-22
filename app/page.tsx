@@ -17,6 +17,8 @@ type Protocol = "TCP" | "UDP" | "SCTP";
 type VolumeType = "emptyDir" | "configMap" | "secret" | "persistentVolumeClaim";
 type PvSourceType = "hostPath" | "nfs" | "csi";
 type EnvSourceType = "value" | "secret" | "configMap";
+type OptionalBooleanValue = "" | "true" | "false";
+type SeccompProfileType = "" | "RuntimeDefault" | "Unconfined" | "Localhost";
 
 const RESOURCE_KIND_ABBREVIATIONS: Record<ResourceKind, string> = {
   CronJob: "CJ",
@@ -52,6 +54,30 @@ type EnvironmentVariableField = {
   sourceKey: string;
 };
 
+type PodSecurityContextField = {
+  enabled: boolean;
+  runAsUser: string;
+  runAsGroup: string;
+  runAsNonRoot: OptionalBooleanValue;
+  fsGroup: string;
+  seccompProfileType: SeccompProfileType;
+  seccompLocalhostProfile: string;
+};
+
+type ContainerSecurityContextField = {
+  enabled: boolean;
+  privileged: OptionalBooleanValue;
+  allowPrivilegeEscalation: OptionalBooleanValue;
+  readOnlyRootFilesystem: OptionalBooleanValue;
+  runAsUser: string;
+  runAsGroup: string;
+  runAsNonRoot: OptionalBooleanValue;
+  capabilitiesAdd: string;
+  capabilitiesDrop: string;
+  seccompProfileType: SeccompProfileType;
+  seccompLocalhostProfile: string;
+};
+
 type ContainerField = {
   id: number;
   name: string;
@@ -67,6 +93,7 @@ type ContainerField = {
   memoryRequest: string;
   cpuLimit: string;
   memoryLimit: string;
+  securityContext: ContainerSecurityContextField;
 };
 
 type MountPointField = {
@@ -98,6 +125,7 @@ type ResourceState = {
   concurrencyPolicy: string;
   serviceAccount: string;
   serviceAccountEnabled: boolean;
+  podSecurityContext: PodSecurityContextField;
   restartPolicy: string;
   serviceType: string;
   routeHost: string;
@@ -135,6 +163,17 @@ interface YamlObject {
 
 const KUBERNETES_VERSION_OPTIONS = ["1.36", "1.35", "1.34", "1.33", "1.32"];
 const OPENSHIFT_VERSION_OPTIONS = ["4.22", "4.21", "4.20", "4.19", "4.18"];
+const OPTIONAL_BOOLEAN_OPTIONS = [
+  { value: "", label: "Not set" },
+  { value: "true", label: "True" },
+  { value: "false", label: "False" },
+];
+const SECCOMP_PROFILE_OPTIONS = [
+  { value: "", label: "Not set" },
+  { value: "RuntimeDefault", label: "RuntimeDefault" },
+  { value: "Unconfined", label: "Unconfined" },
+  { value: "Localhost", label: "Localhost" },
+];
 
 function PlatformIcon({ platform }: { platform: Platform }) {
   if (platform === "OpenShift") {
@@ -338,6 +377,96 @@ function parseCommaSeparatedValues(value: string) {
     .filter(Boolean);
 }
 
+function createDefaultPodSecurityContext(): PodSecurityContextField {
+  return {
+    enabled: false,
+    runAsUser: "",
+    runAsGroup: "",
+    runAsNonRoot: "",
+    fsGroup: "",
+    seccompProfileType: "",
+    seccompLocalhostProfile: "",
+  };
+}
+
+function createDefaultContainerSecurityContext(): ContainerSecurityContextField {
+  return {
+    enabled: false,
+    privileged: "",
+    allowPrivilegeEscalation: "",
+    readOnlyRootFilesystem: "",
+    runAsUser: "",
+    runAsGroup: "",
+    runAsNonRoot: "",
+    capabilitiesAdd: "",
+    capabilitiesDrop: "",
+    seccompProfileType: "",
+    seccompLocalhostProfile: "",
+  };
+}
+
+function parseOptionalBoolean(value: OptionalBooleanValue) {
+  if (!value) return undefined;
+  return value === "true";
+}
+
+function buildSeccompProfile(
+  type: SeccompProfileType,
+  localhostProfile: string,
+): YamlObject | undefined {
+  if (!type) return undefined;
+  return {
+    type,
+    localhostProfile:
+      type === "Localhost" ? localhostProfile.trim() || undefined : undefined,
+  };
+}
+
+function hasDefinedValues(object: YamlObject) {
+  return Object.values(object).some((value) => value !== undefined);
+}
+
+function buildPodSecurityContext(context: PodSecurityContextField) {
+  if (!context.enabled) return undefined;
+  const securityContext: YamlObject = {
+    runAsUser: context.runAsUser.trim() ? Number(context.runAsUser) : undefined,
+    runAsGroup: context.runAsGroup.trim() ? Number(context.runAsGroup) : undefined,
+    runAsNonRoot: parseOptionalBoolean(context.runAsNonRoot),
+    fsGroup: context.fsGroup.trim() ? Number(context.fsGroup) : undefined,
+    seccompProfile: buildSeccompProfile(
+      context.seccompProfileType,
+      context.seccompLocalhostProfile,
+    ),
+  };
+  return hasDefinedValues(securityContext) ? securityContext : undefined;
+}
+
+function buildContainerSecurityContext(context: ContainerSecurityContextField) {
+  if (!context.enabled) return undefined;
+  const capabilitiesAdd = parseCommaSeparatedValues(context.capabilitiesAdd);
+  const capabilitiesDrop = parseCommaSeparatedValues(context.capabilitiesDrop);
+  const securityContext: YamlObject = {
+    privileged: parseOptionalBoolean(context.privileged),
+    allowPrivilegeEscalation: parseOptionalBoolean(context.allowPrivilegeEscalation),
+    readOnlyRootFilesystem: parseOptionalBoolean(context.readOnlyRootFilesystem),
+    runAsUser: context.runAsUser.trim() ? Number(context.runAsUser) : undefined,
+    runAsGroup: context.runAsGroup.trim() ? Number(context.runAsGroup) : undefined,
+    runAsNonRoot: parseOptionalBoolean(context.runAsNonRoot),
+    capabilities:
+      capabilitiesAdd.length > 0 || capabilitiesDrop.length > 0
+        ? {
+            add: capabilitiesAdd,
+            drop: capabilitiesDrop,
+          }
+        : undefined,
+    seccompProfile: buildSeccompProfile(
+      context.seccompProfileType,
+      context.seccompLocalhostProfile,
+    ),
+  };
+  return hasDefinedValues(securityContext) ? securityContext : undefined;
+}
+
 function createDefaultResource(id: number): ResourceState {
   return {
     id,
@@ -353,6 +482,7 @@ function createDefaultResource(id: number): ResourceState {
     concurrencyPolicy: "Allow",
     serviceAccount: "",
     serviceAccountEnabled: false,
+    podSecurityContext: createDefaultPodSecurityContext(),
     restartPolicy: "Always",
     serviceType: "ClusterIP",
     routeHost: "",
@@ -394,6 +524,7 @@ function createDefaultResource(id: number): ResourceState {
         memoryRequest: "256Mi",
         cpuLimit: "500m",
         memoryLimit: "512Mi",
+        securityContext: createDefaultContainerSecurityContext(),
       },
     ],
     servicePorts: [createDefaultPort(0, 1)],
@@ -431,6 +562,7 @@ function buildResourceManifest(resourceState: ResourceState) {
     storageRequest,
     storageVolumeMode,
     parallelism,
+    podSecurityContext,
     pvcVolumeName,
     pvCsiDriver,
     pvCsiFsType,
@@ -522,6 +654,7 @@ function buildResourceManifest(resourceState: ResourceState) {
           },
         }
       : undefined,
+    securityContext: buildContainerSecurityContext(container.securityContext),
     volumeMounts: volumes.flatMap((volume) =>
       volume.mountPoints
         .filter((mountPoint) => mountPoint.containerId === container.id)
@@ -644,6 +777,7 @@ function buildResourceManifest(resourceState: ResourceState) {
   } else {
     const podSpec: YamlObject = {
       serviceAccountName: serviceAccountEnabled ? serviceAccount || undefined : undefined,
+      securityContext: buildPodSecurityContext(podSecurityContext),
       restartPolicy: kind === "Deployment" ? undefined : restartPolicy,
       containers: containerSpecs,
       volumes: volumeSpecs,
@@ -812,6 +946,7 @@ export default function Home() {
     storageRequest,
     storageVolumeMode,
     parallelism,
+    podSecurityContext,
     pvcVolumeName,
     pvCsiDriver,
     pvCsiFsType,
@@ -854,6 +989,8 @@ export default function Home() {
   const setServiceAccount = (value: SetStateAction<string>) => setResourceField("serviceAccount", value);
   const setServiceAccountEnabled = (value: SetStateAction<boolean>) =>
     setResourceField("serviceAccountEnabled", value);
+  const setPodSecurityContext = (value: SetStateAction<PodSecurityContextField>) =>
+    setResourceField("podSecurityContext", value);
   const setRestartPolicy = (value: SetStateAction<string>) => setResourceField("restartPolicy", value);
   const setServiceType = (value: SetStateAction<string>) => setResourceField("serviceType", value);
   const setRouteHost = (value: SetStateAction<string>) => setResourceField("routeHost", value);
@@ -979,6 +1116,22 @@ export default function Home() {
   function updateContainer(id: number, patch: Partial<ContainerField>) {
     setContainers((current) =>
       current.map((container) => (container.id === id ? { ...container, ...patch } : container)),
+    );
+  }
+
+  function updateContainerSecurityContext(
+    containerId: number,
+    patch: Partial<ContainerSecurityContextField>,
+  ) {
+    setContainers((current) =>
+      current.map((container) =>
+        container.id === containerId
+          ? {
+              ...container,
+              securityContext: { ...container.securityContext, ...patch },
+            }
+          : container,
+      ),
     );
   }
 
@@ -1701,6 +1854,7 @@ export default function Home() {
                           memoryRequest: "256Mi",
                           cpuLimit: "500m",
                           memoryLimit: "512Mi",
+                          securityContext: createDefaultContainerSecurityContext(),
                         },
                       ]);
                     }}
@@ -2309,6 +2463,282 @@ export default function Home() {
                       />
                     </div>
                   )}
+
+                  {!podSecurityContext.enabled ? (
+                    <button
+                      className="text-action security-add-action"
+                      type="button"
+                      onClick={() =>
+                        setPodSecurityContext((current) => ({ ...current, enabled: true }))
+                      }
+                    >
+                      <span aria-hidden="true">＋</span>Add pod security context
+                    </button>
+                  ) : (
+                    <div className="security-item">
+                      <div className="security-item-heading">
+                        <div>
+                          <strong>Pod security context</strong>
+                          <span>Defaults inherited by every container in this workload.</span>
+                        </div>
+                        <button
+                          className="remove-button"
+                          type="button"
+                          aria-label="Remove pod security context"
+                          onClick={() => setPodSecurityContext(createDefaultPodSecurityContext())}
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <div className="field-grid two-col">
+                        <Field
+                          label="Run as user"
+                          value={podSecurityContext.runAsUser}
+                          type="number"
+                          onChange={(value) =>
+                            setPodSecurityContext((current) => ({ ...current, runAsUser: value }))
+                          }
+                          placeholder="1000"
+                          error={validationErrors["pod-security-run-as-user"]}
+                        />
+                        <Field
+                          label="Run as group"
+                          value={podSecurityContext.runAsGroup}
+                          type="number"
+                          onChange={(value) =>
+                            setPodSecurityContext((current) => ({ ...current, runAsGroup: value }))
+                          }
+                          placeholder="3000"
+                          error={validationErrors["pod-security-run-as-group"]}
+                        />
+                        <SelectField
+                          label="Run as non-root"
+                          value={podSecurityContext.runAsNonRoot}
+                          onChange={(value) =>
+                            setPodSecurityContext((current) => ({
+                              ...current,
+                              runAsNonRoot: value as OptionalBooleanValue,
+                            }))
+                          }
+                          options={OPTIONAL_BOOLEAN_OPTIONS}
+                        />
+                        <Field
+                          label="Filesystem group"
+                          value={podSecurityContext.fsGroup}
+                          type="number"
+                          onChange={(value) =>
+                            setPodSecurityContext((current) => ({ ...current, fsGroup: value }))
+                          }
+                          placeholder="2000"
+                          error={validationErrors["pod-security-fs-group"]}
+                        />
+                        <SelectField
+                          label="Seccomp profile"
+                          value={podSecurityContext.seccompProfileType}
+                          onChange={(value) =>
+                            setPodSecurityContext((current) => ({
+                              ...current,
+                              seccompProfileType: value as SeccompProfileType,
+                              seccompLocalhostProfile:
+                                value === "Localhost" ? current.seccompLocalhostProfile : "",
+                            }))
+                          }
+                          options={SECCOMP_PROFILE_OPTIONS}
+                        />
+                        {podSecurityContext.seccompProfileType === "Localhost" && (
+                          <Field
+                            label="Localhost profile"
+                            value={podSecurityContext.seccompLocalhostProfile}
+                            onChange={(value) =>
+                              setPodSecurityContext((current) => ({
+                                ...current,
+                                seccompLocalhostProfile: value,
+                              }))
+                            }
+                            placeholder="profiles/audit.json"
+                            required
+                            hint="Path relative to the node's seccomp profile root."
+                            error={validationErrors["pod-security-localhost-profile"]}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="security-context-group">
+                    <div className="security-group-heading">
+                      <strong>Container security contexts</strong>
+                      <span>Container settings override matching pod-level settings.</span>
+                    </div>
+                    {containers.map((container) =>
+                      !container.securityContext.enabled ? (
+                        <div className="security-container-row" key={container.id}>
+                          <span>{container.name || "Unnamed container"}</span>
+                          <button
+                            className="text-action"
+                            type="button"
+                            onClick={() =>
+                              updateContainerSecurityContext(container.id, { enabled: true })
+                            }
+                          >
+                            <span aria-hidden="true">＋</span>Add container security context
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="security-item" key={container.id}>
+                          <div className="security-item-heading">
+                            <div>
+                              <strong>Container security context</strong>
+                              <span>{container.name || "Unnamed container"}</span>
+                            </div>
+                            <button
+                              className="remove-button"
+                              type="button"
+                              aria-label={`Remove security context for ${container.name || "container"}`}
+                              onClick={() =>
+                                updateContainer(container.id, {
+                                  securityContext: createDefaultContainerSecurityContext(),
+                                })
+                              }
+                            >
+                              ×
+                            </button>
+                          </div>
+                          <div className="field-grid two-col">
+                            <SelectField
+                              label="Privileged"
+                              value={container.securityContext.privileged}
+                              onChange={(value) =>
+                                updateContainerSecurityContext(container.id, {
+                                  privileged: value as OptionalBooleanValue,
+                                })
+                              }
+                              options={OPTIONAL_BOOLEAN_OPTIONS}
+                            />
+                            <SelectField
+                              label="Allow privilege escalation"
+                              value={container.securityContext.allowPrivilegeEscalation}
+                              onChange={(value) =>
+                                updateContainerSecurityContext(container.id, {
+                                  allowPrivilegeEscalation: value as OptionalBooleanValue,
+                                })
+                              }
+                              options={OPTIONAL_BOOLEAN_OPTIONS}
+                            />
+                            <SelectField
+                              label="Read-only root filesystem"
+                              value={container.securityContext.readOnlyRootFilesystem}
+                              onChange={(value) =>
+                                updateContainerSecurityContext(container.id, {
+                                  readOnlyRootFilesystem: value as OptionalBooleanValue,
+                                })
+                              }
+                              options={OPTIONAL_BOOLEAN_OPTIONS}
+                            />
+                            <SelectField
+                              label="Run as non-root"
+                              value={container.securityContext.runAsNonRoot}
+                              onChange={(value) =>
+                                updateContainerSecurityContext(container.id, {
+                                  runAsNonRoot: value as OptionalBooleanValue,
+                                })
+                              }
+                              options={OPTIONAL_BOOLEAN_OPTIONS}
+                            />
+                            <Field
+                              label="Run as user"
+                              value={container.securityContext.runAsUser}
+                              type="number"
+                              onChange={(value) =>
+                                updateContainerSecurityContext(container.id, { runAsUser: value })
+                              }
+                              placeholder="1000"
+                              error={
+                                validationErrors[`container-security-run-as-user-${container.id}`]
+                              }
+                            />
+                            <Field
+                              label="Run as group"
+                              value={container.securityContext.runAsGroup}
+                              type="number"
+                              onChange={(value) =>
+                                updateContainerSecurityContext(container.id, { runAsGroup: value })
+                              }
+                              placeholder="3000"
+                              error={
+                                validationErrors[`container-security-run-as-group-${container.id}`]
+                              }
+                            />
+                            <Field
+                              label="Add capabilities"
+                              value={container.securityContext.capabilitiesAdd}
+                              onChange={(value) =>
+                                updateContainerSecurityContext(container.id, {
+                                  capabilitiesAdd: value,
+                                })
+                              }
+                              placeholder="NET_ADMIN, SYS_TIME"
+                              hint="Comma-separated Linux capability names without CAP_."
+                              error={
+                                validationErrors[
+                                  `container-security-capabilities-add-${container.id}`
+                                ]
+                              }
+                            />
+                            <Field
+                              label="Drop capabilities"
+                              value={container.securityContext.capabilitiesDrop}
+                              onChange={(value) =>
+                                updateContainerSecurityContext(container.id, {
+                                  capabilitiesDrop: value,
+                                })
+                              }
+                              placeholder="ALL"
+                              hint="Comma-separated Linux capability names without CAP_."
+                              error={
+                                validationErrors[
+                                  `container-security-capabilities-drop-${container.id}`
+                                ]
+                              }
+                            />
+                            <SelectField
+                              label="Seccomp profile"
+                              value={container.securityContext.seccompProfileType}
+                              onChange={(value) =>
+                                updateContainerSecurityContext(container.id, {
+                                  seccompProfileType: value as SeccompProfileType,
+                                  seccompLocalhostProfile:
+                                    value === "Localhost"
+                                      ? container.securityContext.seccompLocalhostProfile
+                                      : "",
+                                })
+                              }
+                              options={SECCOMP_PROFILE_OPTIONS}
+                            />
+                            {container.securityContext.seccompProfileType === "Localhost" && (
+                              <Field
+                                label="Localhost profile"
+                                value={container.securityContext.seccompLocalhostProfile}
+                                onChange={(value) =>
+                                  updateContainerSecurityContext(container.id, {
+                                    seccompLocalhostProfile: value,
+                                  })
+                                }
+                                placeholder="profiles/audit.json"
+                                required
+                                hint="Path relative to the node's seccomp profile root."
+                                error={
+                                  validationErrors[
+                                    `container-security-localhost-profile-${container.id}`
+                                  ]
+                                }
+                              />
+                            )}
+                          </div>
+                        </div>
+                      ),
+                    )}
+                  </div>
                 </div>
               </section>
             )}
