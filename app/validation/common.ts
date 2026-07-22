@@ -213,6 +213,12 @@ export function validatePodTemplate(input: ValidationInput, errors: ValidationEr
     if (!container.image.trim()) {
       errors[`container-image-${container.id}`] = "Container image is required.";
     }
+    if (
+      container.commandEnabled &&
+      !container.command.split(",").some((entry) => entry.trim())
+    ) {
+      errors[`container-command-${container.id}`] = "Command is required.";
+    }
     if (containerNames.has(container.name)) {
       errors[`container-name-${container.id}`] = "Container names must be unique within a Pod.";
     }

@@ -48,6 +48,9 @@ type ContainerField = {
   image: string;
   pullPolicy: string;
   ports: PortField[];
+  commandEnabled: boolean;
+  command: string;
+  args: string;
   resourcesEnabled: boolean;
   cpuRequest: string;
   memoryRequest: string;
@@ -317,6 +320,13 @@ function parseLabels(value: LabelField[]) {
   );
 }
 
+function parseCommaSeparatedValues(value: string) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function createDefaultResource(id: number): ResourceState {
   return {
     id,
@@ -364,6 +374,9 @@ function createDefaultResource(id: number): ResourceState {
         image: "nginx:latest",
         pullPolicy: "IfNotPresent",
         ports: [],
+        commandEnabled: false,
+        command: "",
+        args: "",
         resourcesEnabled: false,
         cpuRequest: "250m",
         memoryRequest: "256Mi",
@@ -451,6 +464,12 @@ function buildResourceManifest(resourceState: ResourceState) {
     name: container.name || "app",
     image: container.image || "nginx:latest",
     imagePullPolicy: container.pullPolicy,
+    command: container.commandEnabled
+      ? parseCommaSeparatedValues(container.command)
+      : undefined,
+    args: container.commandEnabled && container.args.trim()
+      ? parseCommaSeparatedValues(container.args)
+      : undefined,
     ports: container.ports
       .filter((port) => port.port.trim() !== "")
       .map((port) => ({
@@ -1619,6 +1638,9 @@ export default function Home() {
                           image: "nginx:latest",
                           pullPolicy: "IfNotPresent",
                           ports: [],
+                          commandEnabled: false,
+                          command: "",
+                          args: "",
                           resourcesEnabled: false,
                           cpuRequest: "250m",
                           memoryRequest: "256Mi",
@@ -1689,6 +1711,18 @@ export default function Home() {
                           type="button"
                           onClick={() =>
                             updateContainer(container.id, {
+                              commandEnabled: !container.commandEnabled,
+                            })
+                          }
+                        >
+                          <span aria-hidden="true">{container.commandEnabled ? "−" : "＋"}</span>
+                          {container.commandEnabled ? "Remove command" : "Add command"}
+                        </button>
+                        <button
+                          className="text-action"
+                          type="button"
+                          onClick={() =>
+                            updateContainer(container.id, {
                               resourcesEnabled: !container.resourcesEnabled,
                             })
                           }
@@ -1745,6 +1779,33 @@ export default function Home() {
                           ))}
                         </div>
                       </div>
+                      )}
+
+                      {container.commandEnabled && (
+                        <div className="container-subsection">
+                          <div className="container-subsection-title">
+                            <strong>Command and arguments</strong>
+                            <span>Container entrypoint override</span>
+                          </div>
+                          <div className="field-grid two-col">
+                            <Field
+                              label="Command"
+                              value={container.command}
+                              onChange={(value) => updateContainer(container.id, { command: value })}
+                              placeholder="/bin/sh, -c"
+                              hint="Separate multiple command entries with commas."
+                              required
+                              error={validationErrors[`container-command-${container.id}`]}
+                            />
+                            <Field
+                              label="Arguments"
+                              value={container.args}
+                              onChange={(value) => updateContainer(container.id, { args: value })}
+                              placeholder="echo hello"
+                              hint="Optional. Separate multiple argument entries with commas."
+                            />
+                          </div>
+                        </div>
                       )}
 
                       {container.resourcesEnabled && (

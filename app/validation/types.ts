@@ -25,6 +25,9 @@ export type ContainerInput = {
   id: number;
   name: string;
   image: string;
+  commandEnabled: boolean;
+  command: string;
+  args: string;
   resourcesEnabled: boolean;
   cpuRequest: string;
   memoryRequest: string;
