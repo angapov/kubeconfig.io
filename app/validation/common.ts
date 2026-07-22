@@ -57,6 +57,22 @@ export function validatePortName(value: string) {
   return undefined;
 }
 
+function validateEnvironmentVariableName(value: string) {
+  if (!value.trim()) return "Environment variable name is required.";
+  if (/[^\x20-\x7E]/.test(value) || value.includes("=")) {
+    return "Environment variable name may contain printable ASCII characters except =.";
+  }
+  return undefined;
+}
+
+function validateEnvironmentVariableKey(value: string, source: string) {
+  if (!value.trim()) return `${source} key is required.`;
+  if (!/^[A-Za-z0-9._-]+$/.test(value)) {
+    return `${source} key may contain letters, numbers, ., _, and -.`;
+  }
+  return undefined;
+}
+
 export function validateNonNegativeInteger(value: string, label: string) {
   const parsed = Number(value);
   if (!value.trim() || !Number.isInteger(parsed) || parsed < 0) {
@@ -223,6 +239,34 @@ export function validatePodTemplate(input: ValidationInput, errors: ValidationEr
       errors[`container-name-${container.id}`] = "Container names must be unique within a Pod.";
     }
     containerNames.add(container.name);
+
+    const environmentVariableNames = new Set<string>();
+    container.environmentVariables.forEach((environmentVariable) => {
+      const nameErrorKey = `container-env-name-${container.id}-${environmentVariable.id}`;
+      addError(
+        errors,
+        nameErrorKey,
+        validateEnvironmentVariableName(environmentVariable.name),
+      );
+      if (environmentVariableNames.has(environmentVariable.name)) {
+        errors[nameErrorKey] = "Environment variable names must be unique within a container.";
+      }
+      if (environmentVariable.name) environmentVariableNames.add(environmentVariable.name);
+
+      if (environmentVariable.sourceType !== "value") {
+        const sourceLabel = environmentVariable.sourceType === "secret" ? "Secret" : "ConfigMap";
+        addError(
+          errors,
+          `container-env-source-name-${container.id}-${environmentVariable.id}`,
+          validateDnsName(environmentVariable.sourceName, `${sourceLabel} name`),
+        );
+        addError(
+          errors,
+          `container-env-source-key-${container.id}-${environmentVariable.id}`,
+          validateEnvironmentVariableKey(environmentVariable.sourceKey, sourceLabel),
+        );
+      }
+    });
 
     const portNames = new Set<string>();
     container.ports.forEach((port) => {

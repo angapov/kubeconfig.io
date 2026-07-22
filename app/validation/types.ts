@@ -21,6 +21,15 @@ export type LabelInput = {
   value: string;
 };
 
+export type EnvironmentVariableInput = {
+  id: number;
+  name: string;
+  sourceType: "value" | "secret" | "configMap";
+  value: string;
+  sourceName: string;
+  sourceKey: string;
+};
+
 export type ContainerInput = {
   id: number;
   name: string;
@@ -28,6 +37,7 @@ export type ContainerInput = {
   commandEnabled: boolean;
   command: string;
   args: string;
+  environmentVariables: EnvironmentVariableInput[];
   resourcesEnabled: boolean;
   cpuRequest: string;
   memoryRequest: string;

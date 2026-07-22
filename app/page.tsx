@@ -16,6 +16,7 @@ type ResourceKind =
 type Protocol = "TCP" | "UDP" | "SCTP";
 type VolumeType = "emptyDir" | "configMap" | "secret" | "persistentVolumeClaim";
 type PvSourceType = "hostPath" | "nfs" | "csi";
+type EnvSourceType = "value" | "secret" | "configMap";
 
 const RESOURCE_KIND_ABBREVIATIONS: Record<ResourceKind, string> = {
   CronJob: "CJ",
@@ -42,6 +43,15 @@ type LabelField = {
   value: string;
 };
 
+type EnvironmentVariableField = {
+  id: number;
+  name: string;
+  sourceType: EnvSourceType;
+  value: string;
+  sourceName: string;
+  sourceKey: string;
+};
+
 type ContainerField = {
   id: number;
   name: string;
@@ -51,6 +61,7 @@ type ContainerField = {
   commandEnabled: boolean;
   command: string;
   args: string;
+  environmentVariables: EnvironmentVariableField[];
   resourcesEnabled: boolean;
   cpuRequest: string;
   memoryRequest: string;
@@ -377,6 +388,7 @@ function createDefaultResource(id: number): ResourceState {
         commandEnabled: false,
         command: "",
         args: "",
+        environmentVariables: [],
         resourcesEnabled: false,
         cpuRequest: "250m",
         memoryRequest: "256Mi",
@@ -470,6 +482,27 @@ function buildResourceManifest(resourceState: ResourceState) {
     args: container.commandEnabled && container.args.trim()
       ? parseCommaSeparatedValues(container.args)
       : undefined,
+    env: container.environmentVariables.map((environmentVariable) => ({
+      name: environmentVariable.name,
+      value: environmentVariable.sourceType === "value"
+        ? environmentVariable.value
+        : undefined,
+      valueFrom: environmentVariable.sourceType === "secret"
+        ? {
+            secretKeyRef: {
+              name: environmentVariable.sourceName,
+              key: environmentVariable.sourceKey,
+            },
+          }
+        : environmentVariable.sourceType === "configMap"
+          ? {
+              configMapKeyRef: {
+                name: environmentVariable.sourceName,
+                key: environmentVariable.sourceKey,
+              },
+            }
+          : undefined,
+    })),
     ports: container.ports
       .filter((port) => port.port.trim() !== "")
       .map((port) => ({
@@ -957,6 +990,27 @@ export default function Home() {
               ...container,
               ports: container.ports.map((port) =>
                 port.id === portId ? { ...port, ...patch } : port,
+              ),
+            }
+          : container,
+      ),
+    );
+  }
+
+  function updateEnvironmentVariable(
+    containerId: number,
+    environmentVariableId: number,
+    patch: Partial<EnvironmentVariableField>,
+  ) {
+    setContainers((current) =>
+      current.map((container) =>
+        container.id === containerId
+          ? {
+              ...container,
+              environmentVariables: container.environmentVariables.map((environmentVariable) =>
+                environmentVariable.id === environmentVariableId
+                  ? { ...environmentVariable, ...patch }
+                  : environmentVariable,
               ),
             }
           : container,
@@ -1641,6 +1695,7 @@ export default function Home() {
                           commandEnabled: false,
                           command: "",
                           args: "",
+                          environmentVariables: [],
                           resourcesEnabled: false,
                           cpuRequest: "250m",
                           memoryRequest: "256Mi",
@@ -1704,7 +1759,28 @@ export default function Home() {
                             })
                           }
                         >
-                          <span aria-hidden="true">＋</span>Add container port
+                          <span aria-hidden="true">＋</span>Add port
+                        </button>
+                        <button
+                          className="text-action"
+                          type="button"
+                          onClick={() =>
+                            updateContainer(container.id, {
+                              environmentVariables: [
+                                ...container.environmentVariables,
+                                {
+                                  id: Date.now(),
+                                  name: "",
+                                  sourceType: "value",
+                                  value: "",
+                                  sourceName: "",
+                                  sourceKey: "",
+                                },
+                              ],
+                            })
+                          }
+                        >
+                          <span aria-hidden="true">＋</span>Add environment variables
                         </button>
                         <button
                           className="text-action"
@@ -1728,7 +1804,7 @@ export default function Home() {
                           }
                         >
                           <span aria-hidden="true">{container.resourcesEnabled ? "−" : "＋"}</span>
-                          {container.resourcesEnabled ? "Remove container resources" : "Add container resources"}
+                          {container.resourcesEnabled ? "Remove resources" : "Add resources"}
                         </button>
                       </div>
 
@@ -1779,6 +1855,107 @@ export default function Home() {
                           ))}
                         </div>
                       </div>
+                      )}
+
+                      {container.environmentVariables.length > 0 && (
+                        <div className="container-subsection">
+                          <div className="container-subsection-title">
+                            <strong>Environment variables</strong>
+                            <span>{container.environmentVariables.length} configured</span>
+                          </div>
+                          <div className="environment-variable-list">
+                            {container.environmentVariables.map((environmentVariable) => (
+                              <div className="environment-variable-card" key={environmentVariable.id}>
+                                <div className="environment-variable-card-head">
+                                  <strong>Environment variable</strong>
+                                  <button
+                                    className="remove-button"
+                                    type="button"
+                                    aria-label={`Remove environment variable ${environmentVariable.name || "entry"}`}
+                                    onClick={() =>
+                                      updateContainer(container.id, {
+                                        environmentVariables: container.environmentVariables.filter(
+                                          (item) => item.id !== environmentVariable.id,
+                                        ),
+                                      })
+                                    }
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                                <div className="field-grid two-col">
+                                  <Field
+                                    label="Name"
+                                    value={environmentVariable.name}
+                                    onChange={(value) =>
+                                      updateEnvironmentVariable(container.id, environmentVariable.id, { name: value })
+                                    }
+                                    placeholder="LOG_LEVEL"
+                                    required
+                                    error={validationErrors[
+                                      `container-env-name-${container.id}-${environmentVariable.id}`
+                                    ]}
+                                  />
+                                  <SelectField
+                                    label="Source"
+                                    value={environmentVariable.sourceType}
+                                    onChange={(value) =>
+                                      updateEnvironmentVariable(container.id, environmentVariable.id, {
+                                        sourceType: value as EnvSourceType,
+                                      })
+                                    }
+                                    options={[
+                                      { value: "value", label: "Custom value" },
+                                      { value: "secret", label: "Secret" },
+                                      { value: "configMap", label: "ConfigMap" },
+                                    ]}
+                                  />
+                                  {environmentVariable.sourceType === "value" ? (
+                                    <Field
+                                      label="Value"
+                                      value={environmentVariable.value}
+                                      onChange={(value) =>
+                                        updateEnvironmentVariable(container.id, environmentVariable.id, { value })
+                                      }
+                                      placeholder="info"
+                                    />
+                                  ) : (
+                                    <>
+                                      <Field
+                                        label={environmentVariable.sourceType === "secret" ? "Secret name" : "ConfigMap name"}
+                                        value={environmentVariable.sourceName}
+                                        onChange={(value) =>
+                                          updateEnvironmentVariable(container.id, environmentVariable.id, {
+                                            sourceName: value,
+                                          })
+                                        }
+                                        placeholder={environmentVariable.sourceType === "secret" ? "app-secrets" : "app-config"}
+                                        required
+                                        error={validationErrors[
+                                          `container-env-source-name-${container.id}-${environmentVariable.id}`
+                                        ]}
+                                      />
+                                      <Field
+                                        label={environmentVariable.sourceType === "secret" ? "Secret key" : "ConfigMap key"}
+                                        value={environmentVariable.sourceKey}
+                                        onChange={(value) =>
+                                          updateEnvironmentVariable(container.id, environmentVariable.id, {
+                                            sourceKey: value,
+                                          })
+                                        }
+                                        placeholder="username"
+                                        required
+                                        error={validationErrors[
+                                          `container-env-source-key-${container.id}-${environmentVariable.id}`
+                                        ]}
+                                      />
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       )}
 
                       {container.commandEnabled && (
