@@ -174,6 +174,49 @@ const SECCOMP_PROFILE_OPTIONS = [
   { value: "Unconfined", label: "Unconfined" },
   { value: "Localhost", label: "Localhost" },
 ];
+const LINUX_CAPABILITIES = [
+  "CHOWN",
+  "DAC_OVERRIDE",
+  "DAC_READ_SEARCH",
+  "FOWNER",
+  "FSETID",
+  "KILL",
+  "SETGID",
+  "SETUID",
+  "SETPCAP",
+  "LINUX_IMMUTABLE",
+  "NET_BIND_SERVICE",
+  "NET_BROADCAST",
+  "NET_ADMIN",
+  "NET_RAW",
+  "IPC_LOCK",
+  "IPC_OWNER",
+  "SYS_MODULE",
+  "SYS_RAWIO",
+  "SYS_CHROOT",
+  "SYS_PTRACE",
+  "SYS_PACCT",
+  "SYS_ADMIN",
+  "SYS_BOOT",
+  "SYS_NICE",
+  "SYS_RESOURCE",
+  "SYS_TIME",
+  "SYS_TTY_CONFIG",
+  "MKNOD",
+  "LEASE",
+  "AUDIT_WRITE",
+  "AUDIT_CONTROL",
+  "SETFCAP",
+  "MAC_OVERRIDE",
+  "MAC_ADMIN",
+  "SYSLOG",
+  "WAKE_ALARM",
+  "BLOCK_SUSPEND",
+  "AUDIT_READ",
+  "PERFMON",
+  "BPF",
+  "CHECKPOINT_RESTORE",
+];
 
 function PlatformIcon({ platform }: { platform: Platform }) {
   if (platform === "OpenShift") {
@@ -906,6 +949,91 @@ function SelectField({
   );
 }
 
+function CapabilityMultiSelect({
+  label,
+  value,
+  onChange,
+  includeAll = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  includeAll?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const selected = parseCommaSeparatedValues(value);
+  const options = includeAll ? ["ALL", ...LINUX_CAPABILITIES] : LINUX_CAPABILITIES;
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(event: MouseEvent) {
+      if (!dropdownRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  function toggleCapability(capability: string) {
+    const next = selected.includes(capability)
+      ? selected.filter((item) => item !== capability)
+      : [...selected, capability];
+    onChange(next.join(", "));
+  }
+
+  return (
+    <div className="field capability-field" ref={dropdownRef}>
+      <span className="field-label">{label}</span>
+      <button
+        className="capability-trigger"
+        type="button"
+        aria-haspopup="true"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className={selected.length === 0 ? "capability-placeholder" : ""}>
+          {selected.length === 0
+            ? "Select capabilities"
+            : selected.length <= 2
+              ? selected.join(", ")
+              : `${selected.length} selected`}
+        </span>
+        <span className="dropdown-chevron" aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="capability-menu">
+          <div className="capability-menu-head">
+            <span>{selected.length} selected</span>
+            {selected.length > 0 && (
+              <button type="button" onClick={() => onChange("")}>Clear</button>
+            )}
+          </div>
+          <div className="capability-options" role="group" aria-label={label}>
+            {options.map((capability) => (
+              <label key={capability} className="capability-option">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(capability)}
+                  onChange={() => toggleCapability(capability)}
+                />
+                <span>{capability}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+      <span className="field-hint">Linux capability names are emitted without the CAP_ prefix.</span>
+    </div>
+  );
+}
+
 export default function Home() {
   const [platform, setPlatform] = useState<Platform>("Kubernetes");
   const [kubernetesVersion, setKubernetesVersion] = useState("1.36");
@@ -914,6 +1042,23 @@ export default function Home() {
   const [activeResourceId, setActiveResourceId] = useState(1);
   const nextResourceId = useRef(2);
   const [copied, setCopied] = useState(false);
+  const [securityDialogOpen, setSecurityDialogOpen] = useState(false);
+  const [securityDialogTab, setSecurityDialogTab] = useState<"pod" | "container">("pod");
+  const [securityContainerId, setSecurityContainerId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!securityDialogOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setSecurityDialogOpen(false);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [securityDialogOpen]);
 
   const activeResource =
     resources.find((resource) => resource.id === activeResourceId) ?? resources[0];
@@ -960,6 +1105,8 @@ export default function Home() {
     pvSourceType,
     volumes,
   } = activeResource;
+  const selectedSecurityContainer =
+    containers.find((container) => container.id === securityContainerId) ?? containers[0];
 
   function setResourceField<Key extends keyof ResourceState>(
     key: Key,
@@ -2429,15 +2576,30 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="security-content">
-                  {!serviceAccountEnabled ? (
+                  <div className="security-action-row">
+                    {!serviceAccountEnabled && (
+                      <button
+                        className="text-action security-add-action"
+                        type="button"
+                        onClick={() => setServiceAccountEnabled(true)}
+                      >
+                        <span aria-hidden="true">＋</span>Add ServiceAccount
+                      </button>
+                    )}
                     <button
                       className="text-action security-add-action"
                       type="button"
-                      onClick={() => setServiceAccountEnabled(true)}
+                      onClick={() => {
+                        setSecurityDialogTab("pod");
+                        setSecurityContainerId(containers[0]?.id ?? null);
+                        setSecurityDialogOpen(true);
+                      }}
                     >
-                      <span aria-hidden="true">＋</span>Add ServiceAccount
+                      <span aria-hidden="true">＋</span>Add Security context
                     </button>
-                  ) : (
+                  </div>
+
+                  {serviceAccountEnabled && (
                     <div className="security-item">
                       <div className="security-item-heading">
                         <strong>ServiceAccount</strong>
@@ -2463,286 +2625,9 @@ export default function Home() {
                       />
                     </div>
                   )}
-
-                  {!podSecurityContext.enabled ? (
-                    <button
-                      className="text-action security-add-action"
-                      type="button"
-                      onClick={() =>
-                        setPodSecurityContext((current) => ({ ...current, enabled: true }))
-                      }
-                    >
-                      <span aria-hidden="true">＋</span>Add pod security context
-                    </button>
-                  ) : (
-                    <div className="security-item">
-                      <div className="security-item-heading">
-                        <div>
-                          <strong>Pod security context</strong>
-                          <span>Defaults inherited by every container in this workload.</span>
-                        </div>
-                        <button
-                          className="remove-button"
-                          type="button"
-                          aria-label="Remove pod security context"
-                          onClick={() => setPodSecurityContext(createDefaultPodSecurityContext())}
-                        >
-                          ×
-                        </button>
-                      </div>
-                      <div className="field-grid two-col">
-                        <Field
-                          label="Run as user"
-                          value={podSecurityContext.runAsUser}
-                          type="number"
-                          onChange={(value) =>
-                            setPodSecurityContext((current) => ({ ...current, runAsUser: value }))
-                          }
-                          placeholder="1000"
-                          error={validationErrors["pod-security-run-as-user"]}
-                        />
-                        <Field
-                          label="Run as group"
-                          value={podSecurityContext.runAsGroup}
-                          type="number"
-                          onChange={(value) =>
-                            setPodSecurityContext((current) => ({ ...current, runAsGroup: value }))
-                          }
-                          placeholder="3000"
-                          error={validationErrors["pod-security-run-as-group"]}
-                        />
-                        <SelectField
-                          label="Run as non-root"
-                          value={podSecurityContext.runAsNonRoot}
-                          onChange={(value) =>
-                            setPodSecurityContext((current) => ({
-                              ...current,
-                              runAsNonRoot: value as OptionalBooleanValue,
-                            }))
-                          }
-                          options={OPTIONAL_BOOLEAN_OPTIONS}
-                        />
-                        <Field
-                          label="Filesystem group"
-                          value={podSecurityContext.fsGroup}
-                          type="number"
-                          onChange={(value) =>
-                            setPodSecurityContext((current) => ({ ...current, fsGroup: value }))
-                          }
-                          placeholder="2000"
-                          error={validationErrors["pod-security-fs-group"]}
-                        />
-                        <SelectField
-                          label="Seccomp profile"
-                          value={podSecurityContext.seccompProfileType}
-                          onChange={(value) =>
-                            setPodSecurityContext((current) => ({
-                              ...current,
-                              seccompProfileType: value as SeccompProfileType,
-                              seccompLocalhostProfile:
-                                value === "Localhost" ? current.seccompLocalhostProfile : "",
-                            }))
-                          }
-                          options={SECCOMP_PROFILE_OPTIONS}
-                        />
-                        {podSecurityContext.seccompProfileType === "Localhost" && (
-                          <Field
-                            label="Localhost profile"
-                            value={podSecurityContext.seccompLocalhostProfile}
-                            onChange={(value) =>
-                              setPodSecurityContext((current) => ({
-                                ...current,
-                                seccompLocalhostProfile: value,
-                              }))
-                            }
-                            placeholder="profiles/audit.json"
-                            required
-                            hint="Path relative to the node's seccomp profile root."
-                            error={validationErrors["pod-security-localhost-profile"]}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="security-context-group">
-                    <div className="security-group-heading">
-                      <strong>Container security contexts</strong>
-                      <span>Container settings override matching pod-level settings.</span>
-                    </div>
-                    {containers.map((container) =>
-                      !container.securityContext.enabled ? (
-                        <div className="security-container-row" key={container.id}>
-                          <span>{container.name || "Unnamed container"}</span>
-                          <button
-                            className="text-action"
-                            type="button"
-                            onClick={() =>
-                              updateContainerSecurityContext(container.id, { enabled: true })
-                            }
-                          >
-                            <span aria-hidden="true">＋</span>Add container security context
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="security-item" key={container.id}>
-                          <div className="security-item-heading">
-                            <div>
-                              <strong>Container security context</strong>
-                              <span>{container.name || "Unnamed container"}</span>
-                            </div>
-                            <button
-                              className="remove-button"
-                              type="button"
-                              aria-label={`Remove security context for ${container.name || "container"}`}
-                              onClick={() =>
-                                updateContainer(container.id, {
-                                  securityContext: createDefaultContainerSecurityContext(),
-                                })
-                              }
-                            >
-                              ×
-                            </button>
-                          </div>
-                          <div className="field-grid two-col">
-                            <SelectField
-                              label="Privileged"
-                              value={container.securityContext.privileged}
-                              onChange={(value) =>
-                                updateContainerSecurityContext(container.id, {
-                                  privileged: value as OptionalBooleanValue,
-                                })
-                              }
-                              options={OPTIONAL_BOOLEAN_OPTIONS}
-                            />
-                            <SelectField
-                              label="Allow privilege escalation"
-                              value={container.securityContext.allowPrivilegeEscalation}
-                              onChange={(value) =>
-                                updateContainerSecurityContext(container.id, {
-                                  allowPrivilegeEscalation: value as OptionalBooleanValue,
-                                })
-                              }
-                              options={OPTIONAL_BOOLEAN_OPTIONS}
-                            />
-                            <SelectField
-                              label="Read-only root filesystem"
-                              value={container.securityContext.readOnlyRootFilesystem}
-                              onChange={(value) =>
-                                updateContainerSecurityContext(container.id, {
-                                  readOnlyRootFilesystem: value as OptionalBooleanValue,
-                                })
-                              }
-                              options={OPTIONAL_BOOLEAN_OPTIONS}
-                            />
-                            <SelectField
-                              label="Run as non-root"
-                              value={container.securityContext.runAsNonRoot}
-                              onChange={(value) =>
-                                updateContainerSecurityContext(container.id, {
-                                  runAsNonRoot: value as OptionalBooleanValue,
-                                })
-                              }
-                              options={OPTIONAL_BOOLEAN_OPTIONS}
-                            />
-                            <Field
-                              label="Run as user"
-                              value={container.securityContext.runAsUser}
-                              type="number"
-                              onChange={(value) =>
-                                updateContainerSecurityContext(container.id, { runAsUser: value })
-                              }
-                              placeholder="1000"
-                              error={
-                                validationErrors[`container-security-run-as-user-${container.id}`]
-                              }
-                            />
-                            <Field
-                              label="Run as group"
-                              value={container.securityContext.runAsGroup}
-                              type="number"
-                              onChange={(value) =>
-                                updateContainerSecurityContext(container.id, { runAsGroup: value })
-                              }
-                              placeholder="3000"
-                              error={
-                                validationErrors[`container-security-run-as-group-${container.id}`]
-                              }
-                            />
-                            <Field
-                              label="Add capabilities"
-                              value={container.securityContext.capabilitiesAdd}
-                              onChange={(value) =>
-                                updateContainerSecurityContext(container.id, {
-                                  capabilitiesAdd: value,
-                                })
-                              }
-                              placeholder="NET_ADMIN, SYS_TIME"
-                              hint="Comma-separated Linux capability names without CAP_."
-                              error={
-                                validationErrors[
-                                  `container-security-capabilities-add-${container.id}`
-                                ]
-                              }
-                            />
-                            <Field
-                              label="Drop capabilities"
-                              value={container.securityContext.capabilitiesDrop}
-                              onChange={(value) =>
-                                updateContainerSecurityContext(container.id, {
-                                  capabilitiesDrop: value,
-                                })
-                              }
-                              placeholder="ALL"
-                              hint="Comma-separated Linux capability names without CAP_."
-                              error={
-                                validationErrors[
-                                  `container-security-capabilities-drop-${container.id}`
-                                ]
-                              }
-                            />
-                            <SelectField
-                              label="Seccomp profile"
-                              value={container.securityContext.seccompProfileType}
-                              onChange={(value) =>
-                                updateContainerSecurityContext(container.id, {
-                                  seccompProfileType: value as SeccompProfileType,
-                                  seccompLocalhostProfile:
-                                    value === "Localhost"
-                                      ? container.securityContext.seccompLocalhostProfile
-                                      : "",
-                                })
-                              }
-                              options={SECCOMP_PROFILE_OPTIONS}
-                            />
-                            {container.securityContext.seccompProfileType === "Localhost" && (
-                              <Field
-                                label="Localhost profile"
-                                value={container.securityContext.seccompLocalhostProfile}
-                                onChange={(value) =>
-                                  updateContainerSecurityContext(container.id, {
-                                    seccompLocalhostProfile: value,
-                                  })
-                                }
-                                placeholder="profiles/audit.json"
-                                required
-                                hint="Path relative to the node's seccomp profile root."
-                                error={
-                                  validationErrors[
-                                    `container-security-localhost-profile-${container.id}`
-                                  ]
-                                }
-                              />
-                            )}
-                          </div>
-                        </div>
-                      ),
-                    )}
-                  </div>
                 </div>
               </section>
             )}
-
             <aside className="schema-note">
               <div className="schema-icon" aria-hidden="true">API</div>
               <div>
@@ -2802,6 +2687,337 @@ export default function Home() {
           </div>
         </aside>
       </section>
+
+      {securityDialogOpen && (
+        <div
+          className="security-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSecurityDialogOpen(false);
+          }}
+        >
+          <section
+            className="security-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="security-modal-title"
+          >
+            <div className="security-modal-header">
+              <div>
+                <h2 id="security-modal-title">Security context</h2>
+                <p>Configure pod defaults and container-specific overrides.</p>
+              </div>
+              <button
+                className="security-modal-close"
+                type="button"
+                aria-label="Close security context"
+                onClick={() => setSecurityDialogOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="security-modal-tabs" role="tablist" aria-label="Security context level">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={securityDialogTab === "pod"}
+                className={securityDialogTab === "pod" ? "is-active" : ""}
+                onClick={() => setSecurityDialogTab("pod")}
+              >
+                Pod security context
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={securityDialogTab === "container"}
+                className={securityDialogTab === "container" ? "is-active" : ""}
+                onClick={() => setSecurityDialogTab("container")}
+              >
+                Container security context
+              </button>
+            </div>
+
+            <div className="security-modal-body">
+              {securityDialogTab === "pod" ? (
+                <div className="security-modal-panel" role="tabpanel">
+                  <div className="security-modal-panel-heading">
+                    <div>
+                      <strong>Pod-level defaults</strong>
+                      <span>These settings are inherited by every container unless overridden.</span>
+                    </div>
+                    {podSecurityContext.enabled && (
+                      <button
+                        className="clear-context-button"
+                        type="button"
+                        onClick={() => setPodSecurityContext(createDefaultPodSecurityContext())}
+                      >
+                        Clear pod context
+                      </button>
+                    )}
+                  </div>
+                  <div className="field-grid two-col">
+                    <Field
+                      label="Run as user"
+                      value={podSecurityContext.runAsUser}
+                      type="number"
+                      onChange={(value) =>
+                        setPodSecurityContext((current) => ({
+                          ...current,
+                          enabled: true,
+                          runAsUser: value,
+                        }))
+                      }
+                      placeholder="1000"
+                      error={validationErrors["pod-security-run-as-user"]}
+                    />
+                    <Field
+                      label="Run as group"
+                      value={podSecurityContext.runAsGroup}
+                      type="number"
+                      onChange={(value) =>
+                        setPodSecurityContext((current) => ({
+                          ...current,
+                          enabled: true,
+                          runAsGroup: value,
+                        }))
+                      }
+                      placeholder="3000"
+                      error={validationErrors["pod-security-run-as-group"]}
+                    />
+                    <SelectField
+                      label="Run as non-root"
+                      value={podSecurityContext.runAsNonRoot}
+                      onChange={(value) =>
+                        setPodSecurityContext((current) => ({
+                          ...current,
+                          enabled: true,
+                          runAsNonRoot: value as OptionalBooleanValue,
+                        }))
+                      }
+                      options={OPTIONAL_BOOLEAN_OPTIONS}
+                    />
+                    <Field
+                      label="Filesystem group"
+                      value={podSecurityContext.fsGroup}
+                      type="number"
+                      onChange={(value) =>
+                        setPodSecurityContext((current) => ({
+                          ...current,
+                          enabled: true,
+                          fsGroup: value,
+                        }))
+                      }
+                      placeholder="2000"
+                      error={validationErrors["pod-security-fs-group"]}
+                    />
+                    <SelectField
+                      label="Seccomp profile"
+                      value={podSecurityContext.seccompProfileType}
+                      onChange={(value) =>
+                        setPodSecurityContext((current) => ({
+                          ...current,
+                          enabled: true,
+                          seccompProfileType: value as SeccompProfileType,
+                          seccompLocalhostProfile:
+                            value === "Localhost" ? current.seccompLocalhostProfile : "",
+                        }))
+                      }
+                      options={SECCOMP_PROFILE_OPTIONS}
+                    />
+                    {podSecurityContext.seccompProfileType === "Localhost" && (
+                      <Field
+                        label="Localhost profile"
+                        value={podSecurityContext.seccompLocalhostProfile}
+                        onChange={(value) =>
+                          setPodSecurityContext((current) => ({
+                            ...current,
+                            enabled: true,
+                            seccompLocalhostProfile: value,
+                          }))
+                        }
+                        placeholder="profiles/audit.json"
+                        required
+                        hint="Path relative to the node's seccomp profile root."
+                        error={validationErrors["pod-security-localhost-profile"]}
+                      />
+                    )}
+                  </div>
+                </div>
+              ) : selectedSecurityContainer ? (
+                <div className="security-modal-panel" role="tabpanel">
+                  <div className="security-modal-panel-heading container-context-heading">
+                    <SelectField
+                      label="Container"
+                      value={String(selectedSecurityContainer.id)}
+                      onChange={(value) => setSecurityContainerId(Number(value))}
+                      options={containers.map((container, index) => ({
+                        value: String(container.id),
+                        label: container.name || `Container ${index + 1}`,
+                      }))}
+                    />
+                    {selectedSecurityContainer.securityContext.enabled && (
+                      <button
+                        className="clear-context-button"
+                        type="button"
+                        onClick={() =>
+                          updateContainer(selectedSecurityContainer.id, {
+                            securityContext: createDefaultContainerSecurityContext(),
+                          })
+                        }
+                      >
+                        Clear container context
+                      </button>
+                    )}
+                  </div>
+                  <p className="container-context-note">
+                    Container settings override matching pod-level settings.
+                  </p>
+                  <div className="field-grid two-col">
+                    <SelectField
+                      label="Privileged"
+                      value={selectedSecurityContainer.securityContext.privileged}
+                      onChange={(value) =>
+                        updateContainerSecurityContext(selectedSecurityContainer.id, {
+                          enabled: true,
+                          privileged: value as OptionalBooleanValue,
+                        })
+                      }
+                      options={OPTIONAL_BOOLEAN_OPTIONS}
+                    />
+                    <SelectField
+                      label="Allow privilege escalation"
+                      value={selectedSecurityContainer.securityContext.allowPrivilegeEscalation}
+                      onChange={(value) =>
+                        updateContainerSecurityContext(selectedSecurityContainer.id, {
+                          enabled: true,
+                          allowPrivilegeEscalation: value as OptionalBooleanValue,
+                        })
+                      }
+                      options={OPTIONAL_BOOLEAN_OPTIONS}
+                    />
+                    <SelectField
+                      label="Read-only root filesystem"
+                      value={selectedSecurityContainer.securityContext.readOnlyRootFilesystem}
+                      onChange={(value) =>
+                        updateContainerSecurityContext(selectedSecurityContainer.id, {
+                          enabled: true,
+                          readOnlyRootFilesystem: value as OptionalBooleanValue,
+                        })
+                      }
+                      options={OPTIONAL_BOOLEAN_OPTIONS}
+                    />
+                    <SelectField
+                      label="Run as non-root"
+                      value={selectedSecurityContainer.securityContext.runAsNonRoot}
+                      onChange={(value) =>
+                        updateContainerSecurityContext(selectedSecurityContainer.id, {
+                          enabled: true,
+                          runAsNonRoot: value as OptionalBooleanValue,
+                        })
+                      }
+                      options={OPTIONAL_BOOLEAN_OPTIONS}
+                    />
+                    <Field
+                      label="Run as user"
+                      value={selectedSecurityContainer.securityContext.runAsUser}
+                      type="number"
+                      onChange={(value) =>
+                        updateContainerSecurityContext(selectedSecurityContainer.id, {
+                          enabled: true,
+                          runAsUser: value,
+                        })
+                      }
+                      placeholder="1000"
+                      error={
+                        validationErrors[
+                          `container-security-run-as-user-${selectedSecurityContainer.id}`
+                        ]
+                      }
+                    />
+                    <Field
+                      label="Run as group"
+                      value={selectedSecurityContainer.securityContext.runAsGroup}
+                      type="number"
+                      onChange={(value) =>
+                        updateContainerSecurityContext(selectedSecurityContainer.id, {
+                          enabled: true,
+                          runAsGroup: value,
+                        })
+                      }
+                      placeholder="3000"
+                      error={
+                        validationErrors[
+                          `container-security-run-as-group-${selectedSecurityContainer.id}`
+                        ]
+                      }
+                    />
+                    <CapabilityMultiSelect
+                      label="Add capabilities"
+                      value={selectedSecurityContainer.securityContext.capabilitiesAdd}
+                      onChange={(value) =>
+                        updateContainerSecurityContext(selectedSecurityContainer.id, {
+                          enabled: true,
+                          capabilitiesAdd: value,
+                        })
+                      }
+                    />
+                    <CapabilityMultiSelect
+                      label="Drop capabilities"
+                      value={selectedSecurityContainer.securityContext.capabilitiesDrop}
+                      onChange={(value) =>
+                        updateContainerSecurityContext(selectedSecurityContainer.id, {
+                          enabled: true,
+                          capabilitiesDrop: value,
+                        })
+                      }
+                      includeAll
+                    />
+                    <SelectField
+                      label="Seccomp profile"
+                      value={selectedSecurityContainer.securityContext.seccompProfileType}
+                      onChange={(value) =>
+                        updateContainerSecurityContext(selectedSecurityContainer.id, {
+                          enabled: true,
+                          seccompProfileType: value as SeccompProfileType,
+                          seccompLocalhostProfile:
+                            value === "Localhost"
+                              ? selectedSecurityContainer.securityContext.seccompLocalhostProfile
+                              : "",
+                        })
+                      }
+                      options={SECCOMP_PROFILE_OPTIONS}
+                    />
+                    {selectedSecurityContainer.securityContext.seccompProfileType === "Localhost" && (
+                      <Field
+                        label="Localhost profile"
+                        value={selectedSecurityContainer.securityContext.seccompLocalhostProfile}
+                        onChange={(value) =>
+                          updateContainerSecurityContext(selectedSecurityContainer.id, {
+                            enabled: true,
+                            seccompLocalhostProfile: value,
+                          })
+                        }
+                        placeholder="profiles/audit.json"
+                        required
+                        hint="Path relative to the node's seccomp profile root."
+                        error={
+                          validationErrors[
+                            `container-security-localhost-profile-${selectedSecurityContainer.id}`
+                          ]
+                        }
+                      />
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="security-modal-footer">
+              <button type="button" onClick={() => setSecurityDialogOpen(false)}>Done</button>
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
