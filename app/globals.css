@@ -308,6 +308,21 @@ summary:focus-visible {
   box-shadow: 0 0 0 5px var(--green-soft);
 }
 
+.schema-chip.is-loading .status-dot,
+.loading-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #f79009;
+  box-shadow: 0 0 0 5px #fff4e5;
+}
+
+.schema-chip.has-error .status-dot {
+  background: #f04438;
+  box-shadow: 0 0 0 5px #fef3f2;
+}
+
 .eyebrow,
 .panel-kicker {
   margin: 0;
@@ -1452,6 +1467,14 @@ summary:focus-visible {
   line-height: 1.45;
 }
 
+.schema-error-list {
+  margin: 8px 0 0;
+  padding-left: 16px;
+  color: #b42318;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 .schema-note a {
   color: var(--blue);
   font-size: 11px;
@@ -1565,6 +1588,10 @@ summary:focus-visible {
   color: #fda29b;
 }
 
+.editor-meta > div.loading-state {
+  color: #fdb022;
+}
+
 .valid-dot {
   width: 7px;
   height: 7px;
@@ -1577,6 +1604,12 @@ summary:focus-visible {
   flex: 0 0 auto;
   border-radius: 50%;
   background: #f04438;
+}
+
+.editor-meta .loading-dot {
+  width: 7px;
+  height: 7px;
+  box-shadow: none;
 }
 
 .code-editor {

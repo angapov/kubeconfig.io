@@ -12,9 +12,12 @@
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "schema:sync": "node scripts/sync-api-schemas.mjs",
+    "schema:check": "node scripts/validate-api-schemas.mjs",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "ajv": "8.17.1",
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
     "react": "19.2.6",

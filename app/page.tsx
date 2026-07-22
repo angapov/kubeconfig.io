@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
+import { validateResourceSchema, type SchemaValidationResult } from "./schema/validator";
 import { validateManifestFields } from "./validation/validate";
 
 type Platform = "Kubernetes" | "OpenShift";
@@ -575,7 +576,7 @@ function createDefaultResource(id: number): ResourceState {
   };
 }
 
-function buildResourceManifest(resourceState: ResourceState) {
+function buildResourceObject(resourceState: ResourceState) {
   const {
     backoffLimit,
     completions,
@@ -877,7 +878,11 @@ function buildResourceManifest(resourceState: ResourceState) {
     }
   }
 
-  return `${toYaml(resource).join("\n")}\n`;
+  return resource;
+}
+
+function buildResourceManifest(resourceState: ResourceState) {
+  return `${toYaml(buildResourceObject(resourceState)).join("\n")}\n`;
 }
 
 function Field({
@@ -1045,6 +1050,10 @@ export default function Home() {
   const [securityDialogOpen, setSecurityDialogOpen] = useState(false);
   const [securityDialogTab, setSecurityDialogTab] = useState<"pod" | "container">("pod");
   const [securityContainerId, setSecurityContainerId] = useState<number | null>(null);
+  const [schemaValidationState, setSchemaValidationState] = useState<{
+    key: string;
+    results: Record<number, SchemaValidationResult>;
+  }>({ key: "", results: {} });
 
   useEffect(() => {
     if (!securityDialogOpen) return;
@@ -1107,6 +1116,11 @@ export default function Home() {
   } = activeResource;
   const selectedSecurityContainer =
     containers.find((container) => container.id === securityContainerId) ?? containers[0];
+  const version = platform === "OpenShift" ? openShiftVersion : kubernetesVersion;
+  const schemaValidationKey = useMemo(
+    () => JSON.stringify([platform, version, resources]),
+    [platform, resources, version],
+  );
 
   function setResourceField<Key extends keyof ResourceState>(
     key: Key,
@@ -1243,16 +1257,54 @@ export default function Home() {
     [resources],
   );
   const validationErrors = validationByResource.get(activeResourceId) ?? {};
-  const validationErrorCount = Array.from(validationByResource.values()).reduce(
+  const fieldValidationErrorCount = Array.from(validationByResource.values()).reduce(
     (total, errors) => total + Object.keys(errors).length,
     0,
   );
-  const isManifestValid = validationErrorCount === 0;
 
   const manifest = useMemo(
     () => resources.map(buildResourceManifest).join("---\n"),
     [resources],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(
+      resources.map(async (resource) => {
+        const schemaResource = JSON.parse(JSON.stringify(buildResourceObject(resource)));
+        const result = await validateResourceSchema(
+          platform,
+          version,
+          resource.kind,
+          schemaResource,
+        );
+        return [resource.id, result] as const;
+      }),
+    ).then((results) => {
+      if (!cancelled) {
+        setSchemaValidationState({
+          key: schemaValidationKey,
+          results: Object.fromEntries(results),
+        });
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [platform, resources, schemaValidationKey, version]);
+
+  const schemaValidationPending = schemaValidationState.key !== schemaValidationKey;
+  const schemaValidationByResource = schemaValidationPending
+    ? {}
+    : schemaValidationState.results;
+  const schemaValidationErrors = resources.flatMap((resource) =>
+    (schemaValidationByResource[resource.id]?.errors ?? []).map(
+      (error) => `${resource.kind}: ${error}`,
+    ),
+  );
+  const validationErrorCount = fieldValidationErrorCount + schemaValidationErrors.length;
+  const isManifestValid = validationErrorCount === 0 && !schemaValidationPending;
 
   function updateServicePort(id: number, patch: Partial<PortField>) {
     setServicePorts((current) =>
@@ -1400,7 +1452,6 @@ export default function Home() {
         : kind === "Route"
           ? "route.openshift.io/v1"
           : "v1";
-  const version = platform === "OpenShift" ? openShiftVersion : kubernetesVersion;
   const versionOptions = platform === "OpenShift" ? OPENSHIFT_VERSION_OPTIONS : KUBERNETES_VERSION_OPTIONS;
   const isStorageResource = kind === "PersistentVolumeClaim" || kind === "PersistentVolume";
   const hasPodSpec = kind !== "Service" && kind !== "Route" && !isStorageResource;
@@ -1451,11 +1502,20 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="schema-chip" title="The supported field map is bundled with this client-only site">
+        <div
+          className={`schema-chip${schemaValidationPending ? " is-loading" : schemaValidationErrors.length > 0 ? " has-error" : ""}`}
+          title={`Versioned ${platform} API schemas are bundled with this client-only site`}
+        >
           <span className="status-dot" aria-hidden="true" />
           <span>
-            <strong>Schema ready</strong>
-            <small>Bundled · client-side</small>
+            <strong>
+              {schemaValidationPending
+                ? "Loading schema"
+                : schemaValidationErrors.length > 0
+                  ? "Schema validation failed"
+                  : "Schema ready"}
+            </strong>
+            <small>{platform} v{version} · client-side</small>
           </span>
         </div>
       </header>
@@ -1470,7 +1530,9 @@ export default function Home() {
           <div className="resource-tabs" aria-label={`${platform} resources`}>
             <div className="resource-tab-list" role="tablist">
               {resources.map((resource, index) => {
-                const tabErrorCount = Object.keys(validationByResource.get(resource.id) ?? {}).length;
+                const tabErrorCount =
+                  Object.keys(validationByResource.get(resource.id) ?? {}).length +
+                  (schemaValidationByResource[resource.id]?.errors.length ?? 0);
                 const isActive = resource.id === activeResourceId;
                 return (
                   <div className={`resource-tab${isActive ? " active" : ""}`} key={resource.id}>
@@ -2633,9 +2695,16 @@ export default function Home() {
               <div>
                 <strong>{platform} v{version} field map</strong>
                 <p>
-                  This builder uses a bundled schema subset, so it works without a server or cluster credentials.
-                  Full cluster-specific validation can later load OpenAPI v3 from the cluster API server.
+                  Each supported object type is validated against its own bundled, version-specific API schema.
+                  Cluster admission policies and installed CRDs still require server-side validation.
                 </p>
+                {schemaValidationErrors.length > 0 && (
+                  <ul className="schema-error-list">
+                    {schemaValidationErrors.slice(0, 3).map((error) => (
+                      <li key={error}>{error}</li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <a
                 href={
@@ -2666,11 +2735,15 @@ export default function Home() {
             </div>
           </div>
           <div className="editor-meta">
-            <div className={isManifestValid ? "" : "invalid-state"}>
-              <span className={isManifestValid ? "valid-dot" : "invalid-dot"} />
-              {isManifestValid
-                ? `${platform} validation passed`
-                : `${validationErrorCount} validation ${validationErrorCount === 1 ? "error" : "errors"}`}
+            <div className={schemaValidationPending ? "loading-state" : isManifestValid ? "" : "invalid-state"}>
+              <span
+                className={schemaValidationPending ? "loading-dot" : isManifestValid ? "valid-dot" : "invalid-dot"}
+              />
+              {schemaValidationPending
+                ? `Loading ${platform} v${version} schema`
+                : isManifestValid
+                  ? `${platform} schema validation passed`
+                  : `${validationErrorCount} validation ${validationErrorCount === 1 ? "error" : "errors"}`}
             </div>
             <span>{resources.length} {resources.length === 1 ? "resource" : "resources"} · {platform} v{version}</span>
           </div>

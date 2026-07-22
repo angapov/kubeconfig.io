@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "format": "Self-contained JSON Schema bundles extracted from version-pinned OpenAPI 2.0 documents",
+  "platforms": {
+    "Kubernetes": {
+      "1.36": {
+        "resources": {
+          "Pod": "/schemas/kubernetes/1.36/Pod.json",
+          "Deployment": "/schemas/kubernetes/1.36/Deployment.json",
+          "Service": "/schemas/kubernetes/1.36/Service.json",
+          "Job": "/schemas/kubernetes/1.36/Job.json",
+          "CronJob": "/schemas/kubernetes/1.36/CronJob.json",
+          "PersistentVolumeClaim": "/schemas/kubernetes/1.36/PersistentVolumeClaim.json",
+          "PersistentVolume": "/schemas/kubernetes/1.36/PersistentVolume.json"
+        },
+        "source": "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.36.0/api/openapi-spec/swagger.json"
+      },
+      "1.35": {
+        "resources": {
+          "Pod": "/schemas/kubernetes/1.35/Pod.json",
+          "Deployment": "/schemas/kubernetes/1.35/Deployment.json",
+          "Service": "/schemas/kubernetes/1.35/Service.json",
+          "Job": "/schemas/kubernetes/1.35/Job.json",
+          "CronJob": "/schemas/kubernetes/1.35/CronJob.json",
+          "PersistentVolumeClaim": "/schemas/kubernetes/1.35/PersistentVolumeClaim.json",
+          "PersistentVolume": "/schemas/kubernetes/1.35/PersistentVolume.json"
+        },
+        "source": "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.35.0/api/openapi-spec/swagger.json"
+      },
+      "1.34": {
+        "resources": {
+          "Pod": "/schemas/kubernetes/1.34/Pod.json",
+          "Deployment": "/schemas/kubernetes/1.34/Deployment.json",
+          "Service": "/schemas/kubernetes/1.34/Service.json",
+          "Job": "/schemas/kubernetes/1.34/Job.json",
+          "CronJob": "/schemas/kubernetes/1.34/CronJob.json",
+          "PersistentVolumeClaim": "/schemas/kubernetes/1.34/PersistentVolumeClaim.json",
+          "PersistentVolume": "/schemas/kubernetes/1.34/PersistentVolume.json"
+        },
+        "source": "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.34.0/api/openapi-spec/swagger.json"
+      },
+      "1.33": {
+        "resources": {
+          "Pod": "/schemas/kubernetes/1.33/Pod.json",
+          "Deployment": "/schemas/kubernetes/1.33/Deployment.json",
+          "Service": "/schemas/kubernetes/1.33/Service.json",
+          "Job": "/schemas/kubernetes/1.33/Job.json",
+          "CronJob": "/schemas/kubernetes/1.33/CronJob.json",
+          "PersistentVolumeClaim": "/schemas/kubernetes/1.33/PersistentVolumeClaim.json",
+          "PersistentVolume": "/schemas/kubernetes/1.33/PersistentVolume.json"
+        },
+        "source": "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.33.0/api/openapi-spec/swagger.json"
+      },
+      "1.32": {
+        "resources": {
+          "Pod": "/schemas/kubernetes/1.32/Pod.json",
+          "Deployment": "/schemas/kubernetes/1.32/Deployment.json",
+          "Service": "/schemas/kubernetes/1.32/Service.json",
+          "Job": "/schemas/kubernetes/1.32/Job.json",
+          "CronJob": "/schemas/kubernetes/1.32/CronJob.json",
+          "PersistentVolumeClaim": "/schemas/kubernetes/1.32/PersistentVolumeClaim.json",
+          "PersistentVolume": "/schemas/kubernetes/1.32/PersistentVolume.json"
+        },
+        "source": "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.32.0/api/openapi-spec/swagger.json"
+      }
+    },
+    "OpenShift": {
+      "4.22": {
+        "kubernetesVersion": "1.35",
+        "resources": {
+          "Pod": "/schemas/openshift/4.22/Pod.json",
+          "Deployment": "/schemas/openshift/4.22/Deployment.json",
+          "Service": "/schemas/openshift/4.22/Service.json",
+          "Job": "/schemas/openshift/4.22/Job.json",
+          "CronJob": "/schemas/openshift/4.22/CronJob.json",
+          "PersistentVolumeClaim": "/schemas/openshift/4.22/PersistentVolumeClaim.json",
+          "PersistentVolume": "/schemas/openshift/4.22/PersistentVolume.json",
+          "Route": "/schemas/openshift/4.22/Route.json"
+        },
+        "sources": {
+          "kubernetes": "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.35.0/api/openapi-spec/swagger.json",
+          "openShift": "https://raw.githubusercontent.com/openshift/api/release-4.22/openapi/openapi.json"
+        }
+      },
+      "4.21": {
+        "kubernetesVersion": "1.34",
+        "resources": {
+          "Pod": "/schemas/openshift/4.21/Pod.json",
+          "Deployment": "/schemas/openshift/4.21/Deployment.json",
+          "Service": "/schemas/openshift/4.21/Service.json",
+          "Job": "/schemas/openshift/4.21/Job.json",
+          "CronJob": "/schemas/openshift/4.21/CronJob.json",
+          "PersistentVolumeClaim": "/schemas/openshift/4.21/PersistentVolumeClaim.json",
+          "PersistentVolume": "/schemas/openshift/4.21/PersistentVolume.json",
+          "Route": "/schemas/openshift/4.21/Route.json"
+        },
+        "sources": {
+          "kubernetes": "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.34.0/api/openapi-spec/swagger.json",
+          "openShift": "https://raw.githubusercontent.com/openshift/api/release-4.21/openapi/openapi.json"
+        }
+      },
+      "4.20": {
+        "kubernetesVersion": "1.33",
+        "resources": {
+          "Pod": "/schemas/openshift/4.20/Pod.json",
+          "Deployment": "/schemas/openshift/4.20/Deployment.json",
+          "Service": "/schemas/openshift/4.20/Service.json",
+          "Job": "/schemas/openshift/4.20/Job.json",
+          "CronJob": "/schemas/openshift/4.20/CronJob.json",
+          "PersistentVolumeClaim": "/schemas/openshift/4.20/PersistentVolumeClaim.json",
+          "PersistentVolume": "/schemas/openshift/4.20/PersistentVolume.json",
+          "Route": "/schemas/openshift/4.20/Route.json"
+        },
+        "sources": {
+          "kubernetes": "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.33.0/api/openapi-spec/swagger.json",
+          "openShift": "https://raw.githubusercontent.com/openshift/api/release-4.20/openapi/openapi.json"
+        }
+      },
+      "4.19": {
+        "kubernetesVersion": "1.32",
+        "resources": {
+          "Pod": "/schemas/openshift/4.19/Pod.json",
+          "Deployment": "/schemas/openshift/4.19/Deployment.json",
+          "Service": "/schemas/openshift/4.19/Service.json",
+          "Job": "/schemas/openshift/4.19/Job.json",
+          "CronJob": "/schemas/openshift/4.19/CronJob.json",
+          "PersistentVolumeClaim": "/schemas/openshift/4.19/PersistentVolumeClaim.json",
+          "PersistentVolume": "/schemas/openshift/4.19/PersistentVolume.json",
+          "Route": "/schemas/openshift/4.19/Route.json"
+        },
+        "sources": {
+          "kubernetes": "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.32.0/api/openapi-spec/swagger.json",
+          "openShift": "https://raw.githubusercontent.com/openshift/api/release-4.19/openapi/openapi.json"
+        }
+      },
+      "4.18": {
+        "kubernetesVersion": "1.31",
+        "resources": {
+          "Pod": "/schemas/openshift/4.18/Pod.json",
+          "Deployment": "/schemas/openshift/4.18/Deployment.json",
+          "Service": "/schemas/openshift/4.18/Service.json",
+          "Job": "/schemas/openshift/4.18/Job.json",
+          "CronJob": "/schemas/openshift/4.18/CronJob.json",
+          "PersistentVolumeClaim": "/schemas/openshift/4.18/PersistentVolumeClaim.json",
+          "PersistentVolume": "/schemas/openshift/4.18/PersistentVolume.json",
+          "Route": "/schemas/openshift/4.18/Route.json"
+        },
+        "sources": {
+          "kubernetes": "https://raw.githubusercontent.com/kubernetes/kubernetes/v1.31.0/api/openapi-spec/swagger.json",
+          "openShift": "https://raw.githubusercontent.com/openshift/api/release-4.18/openapi/openapi.json"
+        }
+      }
+    }
+  }
+}
